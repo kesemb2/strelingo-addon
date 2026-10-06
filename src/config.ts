@@ -6,9 +6,10 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypt
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-import { parseLangCode } from './languages';
-import { parseOptionalProviderConfig, type OptionalProviderConfig } from './providers';
-import { addonBase } from './file/upstream';
+import { parseLangCode } from './languages.js';
+import { parseOptionalProviderConfig, type OptionalProviderConfig } from './providers.js';
+import { addonBase } from './file/upstream.js';
+import { storeCredential } from './store.js';
 
 export interface UserConfig {
     raw: Record<string, any>;
@@ -65,12 +66,24 @@ export function parseUserConfig(segment: string | undefined, fallbackTransLang =
 
 let secretCache: string | null = null;
 
+export function signingSource(): 'env' | 'store' | 'local' {
+    const fromEnv = process.env.SECRET || process.env.SUBTITLE_PAYLOAD_SECRET;
+    if (fromEnv && fromEnv.length >= 16) return 'env';
+    return storeCredential() ? 'store' : 'local';
+}
+
 export function signingSecret(): string {
     if (secretCache) return secretCache;
     const fromEnv = process.env.SECRET || process.env.SUBTITLE_PAYLOAD_SECRET;
     if (fromEnv && fromEnv.length >= 16) return (secretCache = fromEnv);
-    // No secret configured: keep a random one in the data directory so links
-    // survive restarts where the disk does.
+    // Every instance must sign alike (Vercel runs many): derive the key from
+    // the shared store's token, which they all have.
+    const credential = storeCredential();
+    if (credential) {
+        return (secretCache = createHmac('sha256', 'strelingo-play-links').update(credential).digest('base64url'));
+    }
+    // A single server without a store: keep a random secret in the data
+    // directory so links survive restarts where the disk does.
     const dir = process.env.DATA_DIR || './data';
     const file = path.join(dir, 'secret');
     try {

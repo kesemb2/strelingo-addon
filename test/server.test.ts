@@ -4,9 +4,9 @@ import assert from 'node:assert/strict';
 process.env.SECRET = 'test-secret-test-secret-test-secret';
 process.env.EXTERNAL_URL = 'https://strelingo.test';
 
-const { default: app, encodeConfig } = await import('../src/index.ts');
-const { deriveSubtitle } = await import('./synthetic.ts');
-const { FILENAME, IMDB, PAL, STREAM_ADDON, makeWorld, srtAccuracy } = await import('./world.ts');
+const { default: app, encodeConfig } = await import('../src/index.js');
+const { deriveSubtitle } = await import('./synthetic.js');
+const { FILENAME, IMDB, PAL, STREAM_ADDON, makeWorld, srtAccuracy } = await import('./world.js');
 
 const passed: string[] = [];
 async function check(name: string, fn: () => Promise<void>) {

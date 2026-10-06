@@ -1,8 +1,8 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "ES2022",
-    "moduleResolution": "bundler",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
@@ -11,9 +11,7 @@
     "forceConsistentCasingInFileNames": true,
     "types": [
       "node"
-    ],
-    "noEmit": true,
-    "allowImportingTsExtensions": true
+    ]
   },
   "include": [
     "src/**/*.ts",
@@ -22,7 +20,10 @@
     "test/synthetic.ts",
     "test/fakeFiles.ts",
     "test/pipeline.test.ts",
-    "test/server.test.ts"
+    "test/server.test.ts",
+    "test/store.test.ts",
+    "test/vercel.test.ts",
+    "test/fakeStores.ts"
   ],
   "exclude": [
     "node_modules",

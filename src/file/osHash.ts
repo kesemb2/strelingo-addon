@@ -2,7 +2,7 @@
 // file size + the sum of the first and last 64 KiB as little-endian uint64s.
 // Subtitles uploaded with this hash were timed against this exact file.
 
-import { RangeReader } from './rangeReader';
+import { RangeReader } from './rangeReader.js';
 
 const CHUNK = 64 * 1024;
 const MASK = (1n << 64n) - 1n;

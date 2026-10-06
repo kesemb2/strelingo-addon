@@ -9,8 +9,8 @@
 // Timings built this way belong to the exact file being played: the best
 // possible sync reference.
 
-import { RangeError_, RangeReader } from './rangeReader';
-import type { Span } from '../sync/aligner';
+import { RangeError_, RangeReader } from './rangeReader.js';
+import type { Span } from '../sync/aligner.js';
 
 const EBML = 0x1A45DFA3, DOCTYPE = 0x4282;
 const SEGMENT = 0x18538067, CLUSTER = 0x1F43B675;

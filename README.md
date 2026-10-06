@@ -36,11 +36,26 @@
 
 ## התקנה (פעם אחת)
 
-1. **פריסה**: הכי פשוט — [Render](https://render.com) → New → Blueprint → הריפו הזה (הקובץ `render.yaml` עושה הכל, חינם).
-   או בכל שרת: `docker compose up -d`. אפשר גם להריץ לידכם: `npm install && npm start`.
-   בחינם ב-Render השרת "נרדם" אחרי 15 דקות — כדאי pinger חינמי (למשל UptimeRobot) על `https://<השרת>/health` כל 10 דקות,
-   כמו שעשינו ב-Smart-Hebrew.
-2. פותחים את כתובת השרת בדפדפן → דף ההגדרות:
+1. **פריסה** — אחת מהאפשרויות:
+
+   **Vercel** (חינם, בלי "הירדמות"):
+   1. Vercel → **Add New → Project** → Import לריפו `strelingo-addon` → Deploy (בלי לשנות הגדרות; `vercel.json` כבר בריפו).
+      Vercel מפרסם את ענף ה-production (בדרך כלל `main`), אז הקוד צריך להיות שם — או לשנות ב-Settings → Git את ה-Production Branch.
+   2. **זיכרון משותף — חובה ב-Vercel.** כל בקשה יכולה לרוץ על מופע אחר, אז "איזה קובץ מתנגן" חייב להישמר מחוץ לשרת.
+      אחת משתיים:
+      - **Upstash**: בפרויקט ב-Vercel → **Storage → Create Database → Upstash (Redis)** → Free → Connect לפרויקט.
+        משתני הסביבה נוספים לבד.
+      - **או Turso** — אותו סוג מסד שכבר יש ל-Smart-Hebrew: Settings → Environment Variables →
+        `TURSO_DATABASE_URL` ו-`TURSO_AUTH_TOKEN` (אפשר אפילו אותו מסד; התוסף משתמש בטבלה נפרדת `strelingo_kv`).
+   3. **Redeploy** (משתני סביבה נכנסים לתוקף רק בפריסה הבאה).
+   4. בדיקה: `https://<הפרויקט>.vercel.app/health` צריך להראות `"sharedState":"upstash"` (או `"turso"`) ו-`"signing":"store"`.
+      אם רואים `"memory"` — הזיכרון המשותף לא מחובר, והסנכרון לקובץ לא יעבוד באופן אמין.
+
+   **Render**: New → Blueprint → הריפו הזה (`render.yaml` עושה הכל, חינם). השרת "נרדם" אחרי 15 דקות —
+   כדאי pinger חינמי (למשל UptimeRobot) על `https://<השרת>/health` כל 10 דקות, כמו ב-Smart-Hebrew.
+
+   **שרת משלכם**: `docker compose up -d`, או `npm install && npm start`.
+2. פותחים את כתובת השרת בדפדפן (`/configure`) → דף ההגדרות:
    - שפה ראשית: **French**, שפת תרגום: **English** (אלה ברירות המחדל).
    - **מדביקים את קישור ה-AIOStreams** (ה-manifest, בדיוק כמו שהותקן ב-Nuvio). זה מה שנותן סנכרון מדויק.
 3. **Copy Link** → ב-Nuvio: Settings → Addons → מדביקים את הקישור. (ב-Stremio אפשר ללחוץ Install.)
@@ -84,6 +99,7 @@ Every merged option inherited that timing. Nuvio's phone app sends subtitle add-
 | Align | fps ratio + global offset by overlap scoring, then a split DP for cuts; rejects subtitles of another movie/episode by contrast against chance | `src/sync/aligner.ts` |
 | Merge | Strelingo's merge on the shared timeline | `src/subtitleMatching.ts` |
 | Serve | background builds (started at play / subtitle listing), staged results, keep-alive while waiting | `src/smart/jobs.ts` |
+| Share | 🎓 picks and finished builds across instances (Upstash / Turso / memory) | `src/store.ts` |
 
 Subtitle sources are Strelingo's: OpenSubtitles via Stremio's v3 add-on (no key), Buta-no-subs for Japanese,
 optional Wyzie / SubSource keys.
@@ -104,12 +120,20 @@ optional Wyzie / SubSource keys.
 ```bash
 npm install
 npm start            # http://localhost:7000/configure
-npm test             # aligner, file probing, pipeline, server (offline, synthetic data)
+npm test             # aligner, file probing, stores, pipeline, server, multi-instance (offline, synthetic data)
 npm run typecheck
 ```
 
-Docker: `docker compose up -d`. Render: `render.yaml` blueprint. Needs a long-running Node process (background
-builds and play records live in memory); serverless/edge targets are not supported. See `.env.example` for options.
+- **Vercel**: import the repo (`vercel.json` routes everything to `src/index.ts` via `@vercel/node`) and connect a
+  shared store — Upstash Redis from Vercel's Storage tab (`UPSTASH_REDIS_REST_*` / `KV_REST_API_*` are set for you)
+  or Turso (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`). Requests may land on different instances, so 🎓 picks,
+  finished builds and history live there; builds outlive their response through `waitUntil`; the `/play` signing
+  key is derived from the store token unless `SECRET` is set. Check `/health`: `sharedState` must not be `memory`.
+- **Docker**: `docker compose up -d`. **Render**: `render.yaml` blueprint. A single long-running process needs no
+  store (memory is shared), though one can be used.
+
+See `.env.example` for all options. Imports use explicit `.js` extensions so the compiled output runs as plain
+Node ESM (how `@vercel/node` runs it), not only under `tsx`.
 
 ### Tests
 

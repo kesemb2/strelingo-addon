@@ -6,18 +6,18 @@
 import { Buffer } from 'node:buffer';
 import { unzipSync } from 'fflate';
 
-import { decodeSubtitleBuffer, getLanguageAliases } from '../encoding';
+import { decodeSubtitleBuffer, getLanguageAliases } from '../encoding.js';
 import {
     fetchOptionalProviderSubtitles,
     hasAnyOptionalProvider,
     resolveRequestedLangs,
     type OptionalProviderConfig
-} from '../providers';
-import { languageName } from '../languages';
-import type { SubtitleCue } from '../subtitleMatching';
-import type { Span } from '../sync/aligner';
-import { parseSrtTimeToMs } from '../subtitleMatching';
-import { SubtitleConverter, parseSrt } from './formats';
+} from '../providers.js';
+import { languageName } from '../languages.js';
+import type { SubtitleCue } from '../subtitleMatching.js';
+import type { Span } from '../sync/aligner.js';
+import { parseSrtTimeToMs } from '../subtitleMatching.js';
+import { SubtitleConverter, parseSrt } from './formats.js';
 
 export interface Candidate {
     id: string;

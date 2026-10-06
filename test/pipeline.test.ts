@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict';
-import { buildDual, type SmartRequest } from '../src/smart/pipeline.ts';
-import { alignToReference } from '../src/sync/aligner.ts';
-import { deriveSubtitle, speechTrack } from './synthetic.ts';
-import { FILENAME, IMDB, PAL, STREAM_ADDON, makeWorld, srtAccuracy, srtSpans } from './world.ts';
+import { buildDual, type SmartRequest } from '../src/smart/pipeline.js';
+import { alignToReference } from '../src/sync/aligner.js';
+import { deriveSubtitle, speechTrack } from './synthetic.js';
+import { FILENAME, IMDB, PAL, STREAM_ADDON, makeWorld, srtAccuracy, srtSpans } from './world.js';
 
 const passed: string[] = [];
 async function check(name: string, fn: () => Promise<void>) {

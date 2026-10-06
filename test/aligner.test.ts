@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
-import { alignToReference, sameTimelineScore } from '../src/sync/aligner.ts';
-import { accuracy, deriveSubtitle, speechTrack } from './synthetic.ts';
+import { alignToReference, sameTimelineScore } from '../src/sync/aligner.js';
+import { accuracy, deriveSubtitle, speechTrack } from './synthetic.js';
 
 const PAL = 23.976 / 25;
 const results: string[] = [];

@@ -20,14 +20,14 @@
 // sync/aligner.ts); one that doesn't fit (another cut, another episode, a
 // broken upload) is passed over for the next.
 
-import { probeFile, type ProbeResult } from '../file/probe';
-import { fetchUpstreamStreams, matchStream, playingFileOf } from '../file/upstream';
-import { ISO639_3_TO_1 } from '../encoding';
-import type { OptionalProviderConfig } from '../providers';
-import { formatSrt } from '../subs/formats';
-import { listCandidates, loadSubtitle, type CandidateLists, type LoadedSubtitle } from '../subs/sources';
-import { mergeSubtitlesByTime, type SubtitleCue } from '../subtitleMatching';
-import { alignToReference, sameTimelineScore, type AlignResult, type Span } from '../sync/aligner';
+import { probeFile, type ProbeResult } from '../file/probe.js';
+import { fetchUpstreamStreams, matchStream, playingFileOf } from '../file/upstream.js';
+import { ISO639_3_TO_1 } from '../encoding.js';
+import type { OptionalProviderConfig } from '../providers.js';
+import { formatSrt } from '../subs/formats.js';
+import { listCandidates, loadSubtitle, type CandidateLists, type LoadedSubtitle } from '../subs/sources.js';
+import { mergeSubtitlesByTime, type SubtitleCue } from '../subtitleMatching.js';
+import { alignToReference, sameTimelineScore, type AlignResult, type Span } from '../sync/aligner.js';
 
 export interface FileHint {
     url?: string;

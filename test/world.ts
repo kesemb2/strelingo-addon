@@ -3,8 +3,8 @@
 // stream add-on, and OpenSubtitles results in French and English made for
 // different releases.
 
-import { buildMkv } from './fakeFiles.ts';
-import { deriveSubtitle, speechTrack, type TrueSpan } from './synthetic.ts';
+import { buildMkv } from './fakeFiles.js';
+import { deriveSubtitle, speechTrack, type TrueSpan } from './synthetic.js';
 
 const FRENCH = [
     'Je ne sais pas ce que tu veux dire par là.',

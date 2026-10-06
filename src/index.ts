@@ -2,15 +2,16 @@ import 'dotenv/config';
 import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 
-import landingTemplate, { type Manifest } from './landingTemplate';
-import { browserLanguageMap, languageName, languageOptions } from './languages';
-import { resolveKitsuToImdb } from './kitsuMapping';
-import { OPTIONAL_PROVIDERS, WYZIE_SOURCES } from './providers';
-import { encodeConfig, parseUserConfig, signPayload, verifyPayload, type UserConfig } from './config';
-import { fetchUpstreamStreams, type UpstreamStream } from './file/upstream';
-import { latestPlay, recordPlay } from './smart/plays';
-import { recentBuilds, startJob, waitForJob } from './smart/jobs';
-import type { FileHint, SmartRequest } from './smart/pipeline';
+import landingTemplate, { type Manifest } from './landingTemplate.js';
+import { browserLanguageMap, languageName, languageOptions } from './languages.js';
+import { resolveKitsuToImdb } from './kitsuMapping.js';
+import { OPTIONAL_PROVIDERS, WYZIE_SOURCES } from './providers.js';
+import { encodeConfig, parseUserConfig, signingSource, signPayload, verifyPayload, type UserConfig } from './config.js';
+import { fetchUpstreamStreams, type UpstreamStream } from './file/upstream.js';
+import { latestPlay, playsShared, recordPlay } from './smart/plays.js';
+import { keepAlive, recentBuilds, startJob, waitForJob } from './smart/jobs.js';
+import { getStore } from './store.js';
+import type { FileHint, SmartRequest } from './smart/pipeline.js';
 
 // ---------------------------------------------------------------------------
 // Manifest
@@ -198,8 +199,8 @@ function decodeCtx(seg: string): FileCtx {
 }
 
 /** The best knowledge of the playing file: a 🎓 play beats what the player said. */
-function resolveFile(config: UserConfig, videoId: string, said: FileCtx): FileHint {
-    const played = latestPlay(config.userKey, videoId);
+async function resolveFile(config: UserConfig, videoId: string, said: FileCtx): Promise<FileHint> {
+    const played = await latestPlay(config.userKey, videoId);
     if (played) return { ...played, hash: played.hash || said.h };
     if (said.f || said.s || said.h) return { filename: said.f, size: said.s, hash: said.h, via: 'request' };
     return {};
@@ -210,12 +211,12 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 // With a stream add-on configured, a 🎓 play may land a moment after the
 // player asks for subtitles: give it a short chance before building blind.
 async function resolveFileWaiting(config: UserConfig, videoId: string, said: FileCtx, waitMs: number): Promise<FileHint> {
-    let file = resolveFile(config, videoId, said);
+    let file = await resolveFile(config, videoId, said);
     if (!config.streamAddonUrl || file.via === 'play') return file;
     const until = Date.now() + waitMs;
     while (Date.now() < until) {
         await sleep(250);
-        file = resolveFile(config, videoId, said);
+        file = await resolveFile(config, videoId, said);
         if (file.via === 'play') break;
     }
     return file;
@@ -241,7 +242,15 @@ function explainSrt(notes: string[], mainLang: string): string {
 const app = new Hono();
 app.use('*', cors());
 
-app.get('/health', c => c.json({ ok: true, version: VERSION }));
+// sharedState "memory" on Vercel means 🎓 picks and builds don't reach other
+// instances: connect Upstash or Turso (see README).
+app.get('/health', c => c.json({
+    ok: true,
+    version: VERSION,
+    sharedState: getStore().kind,
+    signing: signingSource(),
+    vercel: process.env.VERCEL === '1'
+}));
 
 app.get('/manifest.json', c => {
     const manifest = withUserDefaults(getManifest(null), null);
@@ -316,13 +325,13 @@ app.get('/:config/stream/:type/:id', async c => {
 // A 🎓 stream: note which file this user is playing, start preparing its
 // subtitles, and hand the player the real URL. Players re-open the URL on
 // every seek, so this stays a cheap redirect.
-app.on(['GET', 'HEAD'], '/:config/play/:token', c => {
+app.on(['GET', 'HEAD'], '/:config/play/:token', async c => {
     const config = parseUserConfig(c.req.param('config'));
     const payload = verifyPayload<PlayPayload>(c.req.param('token'));
     if (!config || !payload?.u || !/^https?:\/\//.test(payload.u)) return c.text('invalid link', 400);
 
     const file: FileHint = { url: payload.u, filename: payload.f, size: payload.s, headers: payload.hd, via: 'play' };
-    if (recordPlay(config.userKey, payload.v, file)) {
+    if (await recordPlay(config.userKey, payload.v, file)) {
         const ids = parseVideoId(payload.t, payload.v);
         if (ids) {
             console.log(`[play] ${payload.v} ${payload.f || ''}`);
@@ -349,7 +358,7 @@ async function handleSubtitles(c: Context) {
 
     const said = parseExtra(extra);
     const ctx: FileCtx = { f: said.filename, s: said.size, h: said.hash };
-    const file = resolveFile(config, ids.videoId, ctx);
+    const file = await resolveFile(config, ids.videoId, ctx);
     const knowsFile = Boolean(file.url || file.filename || file.size || file.hash);
 
     // Start preparing now so the subtitle is ready when it's picked.
@@ -358,7 +367,7 @@ async function handleSubtitles(c: Context) {
         startJob(smartRequest(config, type, ids, f, 1), config.userKey);
         if (!(f.url || f.filename || f.size || f.hash)) startJob(smartRequest(config, type, ids, f, 2), config.userKey);
     };
-    void kick();
+    keepAlive(kick());
 
     const base = `${externalBase(c)}/${c.req.param('config')}`;
     const idSeg = encodeURIComponent(ids.videoId);
@@ -434,13 +443,14 @@ app.get('/:config/dual/:variant/:type/:id/:ctx/:name', async c => {
 
 // What happened with your recent subtitles: tier (file / hash / consensus),
 // which subtitles were picked, how they were fitted, and why not better.
-app.get('/:config/status', c => {
+app.get('/:config/status', async c => {
     const config = parseUserConfig(c.req.param('config'));
     if (!config) return c.json({ error: 'invalid configuration' }, 400);
     return c.json({
         languages: `${config.mainLang}+${config.transLang}`,
         streamAddon: Boolean(config.streamAddonUrl),
-        builds: recentBuilds(config.userKey)
+        sharedState: playsShared() ? getStore().kind : 'memory (this server only)',
+        builds: await recentBuilds(config.userKey)
     });
 });
 

@@ -3,8 +3,17 @@
 // as soon as the add-on learns about a video — when a 🎓 stream is played, or
 // when the player lists subtitles — and every stage it reaches is kept, so a
 // request that can't wait any longer still gets the best result so far.
+//
+// Finished builds also go to the shared store (see ../store.ts): on Vercel the
+// request that plays the stream and the one that fetches the subtitle may run
+// on different instances. waitUntil keeps a Vercel function alive for a build
+// that outlives its response; elsewhere it does nothing.
 
-import { buildDual, type BuildInfo, type BuildOutput, type SmartRequest } from './pipeline';
+import { createHash } from 'node:crypto';
+import { waitUntil } from '@vercel/functions';
+
+import { getJson, setJson } from '../store.js';
+import { buildDual, type BuildInfo, type BuildOutput, type SmartRequest } from './pipeline.js';
 
 interface Job {
     key: string;
@@ -31,7 +40,19 @@ export interface RecentBuild {
     ok: boolean;
     info: BuildInfo;
 }
-const recent: RecentBuild[] = [];
+const RECENT_MAX = 30;
+const RECENT_TTL_S = 30 * 24 * 3600;
+
+/** Keep a Vercel function alive until `work` settles (no-op elsewhere). */
+export function keepAlive(work: Promise<unknown>): void {
+    try {
+        waitUntil(work.catch(() => undefined));
+    } catch { /* not on Vercel */ }
+}
+
+function resultKey(key: string): string {
+    return `result:${createHash('sha256').update(key).digest('base64url').slice(0, 32)}`;
+}
 
 export function jobKey(req: SmartRequest): string {
     const f = req.file;
@@ -63,21 +84,35 @@ export function startJob(req: SmartRequest, userKey: string): Job {
     };
     job.done = (async () => {
         try {
+            // Built already, maybe by another instance.
+            const stored = await getJson<BuildOutput>(resultKey(key));
+            if (stored?.info) {
+                job.final = stored;
+                job.latest = stored;
+                return;
+            }
             const out = await buildDual(req, partial => {
                 if (job.final) return;
                 job.latest = partial;
                 notify(job);
             });
-            job.final = out;
-            job.latest = out.srt ? out : job.latest;
             const i = out.info;
             console.log(`[build] ${req.videoId} v${req.variant} ${out.srt ? 'ok' : 'FAILED'} tier=${i.tier} `
                 + `file=${i.file.known ? i.file.via || 'yes' : 'unknown'} ref="${i.reference || '-'}" `
                 + `main=${i.main ? `${i.main.source}#${i.main.rank + 1} ratio=${i.main.ratio} off=${i.main.offsetMs} cuts=${i.main.splits} conf=${i.main.contrast}` : '-'} `
                 + `trans=${i.trans ? `${i.trans.source}#${i.trans.rank + 1} conf=${i.trans.contrast} via=${i.trans.alignedTo}` : '-'} `
                 + `notes=[${i.notes.join(',')}] ${i.ms}ms`);
-            recent.unshift({ at: new Date().toISOString(), userKey, videoId: req.videoId, variant: req.variant, ok: Boolean(out.srt), info: out.info });
-            recent.length = Math.min(recent.length, 100);
+            await Promise.all([
+                setJson(resultKey(key), out, (out.srt ? RESULT_TTL_MS : FAILED_TTL_MS) / 1000),
+                (async () => {
+                    const list = (await getJson<RecentBuild[]>(`recent:${userKey}`)) || [];
+                    list.unshift({ at: new Date().toISOString(), userKey, videoId: req.videoId, variant: req.variant, ok: Boolean(out.srt), info: out.info });
+                    await setJson(`recent:${userKey}`, list.slice(0, RECENT_MAX), RECENT_TTL_S);
+                })()
+            ]);
+            // Only now "done": another instance asking from here on finds it stored.
+            job.final = out;
+            job.latest = out.srt ? out : job.latest;
         } catch (e: any) {
             console.error(`[build] ${req.videoId} crashed:`, e?.stack || e);
             job.final = {
@@ -94,6 +129,7 @@ export function startJob(req: SmartRequest, userKey: string): Job {
     })();
 
     jobs.set(key, job);
+    keepAlive(job.done);
     if (jobs.size > MAX_JOBS) {
         for (const [k, j] of jobs) {
             if (j.finishedAt) {
@@ -125,6 +161,11 @@ export function waitForJob(job: Job, waitMs: number): Promise<{ out: BuildOutput
     });
 }
 
-export function recentBuilds(userKey: string): RecentBuild[] {
-    return recent.filter(r => r.userKey === userKey);
+export async function recentBuilds(userKey: string): Promise<RecentBuild[]> {
+    return (await getJson<RecentBuild[]>(`recent:${userKey}`)) || [];
+}
+
+/** Tests: forget this instance's in-memory jobs, as a fresh server instance would. */
+export function forgetLocalJobs(): void {
+    jobs.clear();
 }

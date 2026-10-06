@@ -2,7 +2,7 @@
 // The converters come from the original Strelingo add-on.
 
 import SRTParser2 from 'srt-parser-2';
-import type { SubtitleCue } from '../subtitleMatching';
+import type { SubtitleCue } from '../subtitleMatching.js';
 
 type SRTLine = SubtitleCue;
 

@@ -7,7 +7,7 @@
 // behaviorHints, and the stream add-on returns the same list the player
 // chose from: the stream whose name and size match is the file being played.
 
-import { hasEpisodeTag, isKnown, matchesEpisode, parseRelease, type Release } from './release';
+import { hasEpisodeTag, isKnown, matchesEpisode, parseRelease, type Release } from './release.js';
 
 /**
  * False for localhost, private and link-local addresses — unless

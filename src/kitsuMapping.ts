@@ -1,4 +1,4 @@
-import imdbMappingData from './data/imdb_mapping.json';
+import imdbMappingData from './data/imdb_mapping.json' with { type: 'json' };
 
 // One entry of static/data/imdb_mapping.json (sourced from the Anime Kitsu addon).
 interface RawMappingEntry {

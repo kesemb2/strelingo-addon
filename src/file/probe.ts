@@ -3,10 +3,10 @@
 // of its embedded subtitles (the video's own timeline). A few hundred KB of
 // Range requests, never the whole file.
 
-import { MKV_HEAD_BYTES, readMkvSubtitleTimings, type MkvResult } from './mkv';
-import { hashFromChunks } from './osHash';
-import { RangeReader } from './rangeReader';
-import { isPublicHost } from './upstream';
+import { MKV_HEAD_BYTES, readMkvSubtitleTimings, type MkvResult } from './mkv.js';
+import { hashFromChunks } from './osHash.js';
+import { RangeReader } from './rangeReader.js';
+import { isPublicHost } from './upstream.js';
 
 export interface ProbeResult {
     hash?: string;

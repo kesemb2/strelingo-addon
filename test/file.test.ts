@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { readMkvSubtitleTimings } from '../src/file/mkv.ts';
-import { hashFromChunks } from '../src/file/osHash.ts';
-import { probeFile } from '../src/file/probe.ts';
-import { RangeReader } from '../src/file/rangeReader.ts';
-import { matchesEpisode, parseRelease, releaseScore } from '../src/file/release.ts';
-import { addonBase, matchStream } from '../src/file/upstream.ts';
-import { buildMkv, fakeFetch } from './fakeFiles.ts';
+import { readMkvSubtitleTimings } from '../src/file/mkv.js';
+import { hashFromChunks } from '../src/file/osHash.js';
+import { probeFile } from '../src/file/probe.js';
+import { RangeReader } from '../src/file/rangeReader.js';
+import { matchesEpisode, parseRelease, releaseScore } from '../src/file/release.js';
+import { addonBase, matchStream } from '../src/file/upstream.js';
+import { buildMkv, fakeFetch } from './fakeFiles.js';
 
 const passed: string[] = [];
 async function check(name: string, fn: () => unknown) {
