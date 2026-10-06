@@ -43,14 +43,10 @@ await check('health reports shared state and a signing key every instance shares
     assert.equal(h.signing, 'store');
 });
 
-await check('an old 🎓 link played on instance A, subtitles on instance B: still synced to the file', async () => {
-    const { signPayload } = await import('../src/config.js');
-    const play = await get(`/${cfg}/play/${signPayload({ v: IMDB, t: 'movie', u: world.fileUrl, f: FILENAME, s: world.mkv.length })}`);
-    assert.equal(play.status, 302);
-
+await check('subtitles listed on instance A, fetched on instance B: still synced to the file the player named', async () => {
+    const extra = `filename=${encodeURIComponent(FILENAME)}&videoSize=${world.mkv.length}`;
+    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}/${extra}.json`)).json();
     forgetLocalJobs(); // a fresh instance: nothing in memory
-    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}.json`)).json();
-    forgetLocalJobs();
     const srt = await (await get(list.subtitles[0].url)).text();
     assert.ok(srtAccuracy(srt, world.speech) > 0.95);
 
@@ -59,7 +55,7 @@ await check('an old 🎓 link played on instance A, subtitles on instance B: sti
     const activity: any = await (await get(`/${cfg}/api/activity`)).json();
     const build = activity.videos[0].events.find((e: any) => e.kind === 'build' && e.variant === 1);
     assert.equal(build.info.tier, 'file');
-    assert.equal(build.info.file.via, 'play');
+    assert.equal(build.info.file.via, 'request+upstream');
 });
 
 await check('two instances asked for the same subtitle at once: one builds, the other waits for it', async () => {
@@ -79,7 +75,8 @@ await check('two instances asked for the same subtitle at once: one builds, the 
 });
 
 await check('a build finished on one instance is served by another without rebuilding', async () => {
-    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}.json`)).json();
+    const extra = `filename=${encodeURIComponent(FILENAME)}&videoSize=${world.mkv.length}`;
+    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}/${extra}.json`)).json();
     forgetLocalJobs();
     const before = osListings();
     const srt = await (await get(list.subtitles[0].url)).text();

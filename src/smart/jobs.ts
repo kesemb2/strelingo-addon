@@ -1,11 +1,10 @@
 // Background builds, so the merged subtitle is usually ready before the
 // player asks for it (the Smart-Hebrew-Subtitles ★ approach). A build starts
-// as soon as the add-on learns about a video — when a 🎓 stream is played, or
-// when the player lists subtitles.
+// as soon as the player lists subtitles for a video.
 //
 // Finished builds also go to the shared store (see ../store.ts): on Vercel the
-// request that plays the stream and the one that fetches the subtitle may run
-// on different instances. Only one instance builds a given subtitle (a lease
+// request that lists subtitles and the one that fetches one may run on
+// different instances. Only one instance builds a given subtitle (a lease
 // in the store); the others wait for its result. waitUntil keeps a Vercel
 // function alive for a build that outlives its response; elsewhere it does
 // nothing.

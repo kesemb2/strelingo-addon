@@ -1,6 +1,5 @@
-// State that must be shared between server instances: which file each user
-// is playing (recorded at /play, read when subtitles are requested) and
-// finished builds. On a single long-running server, memory is enough. On
+// State that must be shared between server instances: finished builds, what
+// each user reported, and the activity log. On a single long-running server, memory is enough. On
 // Vercel every request may land on another instance, so it goes to:
 //
 //   Upstash Redis   UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN

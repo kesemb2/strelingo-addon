@@ -120,13 +120,13 @@ Every merged option inherited that timing. Nuvio's phone app sends subtitle add-
 
 | Step | What | Where |
 |---|---|---|
-| Identify the file | `filename`/`videoSize` from the player (Stremio, NuvioTV), matched against the user's stream add-on (AIOStreams) — the Smart-Hebrew way. Nuvio's phone app sends no file info. (Versions up to 1.1 re-listed the streams as 🎓 `/play` links; those links still work.) | `src/file/upstream.ts`, `src/smart/plays.ts`, `src/index.ts` |
+| Identify the file | `filename`/`videoSize` from the player (Stremio, NuvioTV), matched against the user's stream add-on (AIOStreams) — the Smart-Hebrew way. Nuvio's phone app sends no file info. The add-on lists no streams of its own. | `src/file/upstream.ts`, `src/index.ts` |
 | Read the file | OpenSubtitles hash (2 × 64 KiB) and embedded subtitle timings from the MKV Cues index (Range requests, typically < 1 MB) | `src/file/probe.ts`, `src/file/mkv.ts`, `src/file/osHash.ts` |
 | Reference timeline | file's embedded text track → hash-matched subtitle → consensus of downloaded subtitles (film speed preferred over PAL) → top guess. A reference counts only once a subtitle fits it (a signs-only or picture track is passed over); reported ones go last | `src/smart/pipeline.ts` |
 | Align | fps ratio + global offset by overlap scoring, then a split DP for cuts; rejects subtitles of another movie/episode by contrast against chance | `src/sync/aligner.ts` |
 | Pair | the translation must share the main line's timeline (else it is fitted to the main line itself) | `src/smart/pipeline.ts` |
 | Merge | Strelingo's merge on the shared timeline; each language alone too; a color per language (SRT `<font color>`, set on the configure page; Nuvio's Android phone ExoPlayer strips inline styles — use its libmpv engine) | `src/subtitleMatching.ts`, `src/subs/style.ts` |
-| Serve | background builds (started at play / subtitle listing), one builder across instances (store lease), keep-alive while waiting, never an unsynced guess as ★ | `src/smart/jobs.ts` |
+| Serve | background builds (started when subtitles are listed), one builder across instances (store lease), keep-alive while waiting, never an unsynced guess as ★ | `src/smart/jobs.ts` |
 | Teach | in-player "⚠ … · replace" entries and the activity page: per-video bans of a timing reference or a subtitle | `src/smart/feedback.ts` |
 | Show | append-only activity log + Hebrew activity page (Smart-Hebrew style) | `src/smart/activity.ts`, `src/dashboard/` |
 | Share | builds, reports and the log across instances (Upstash / Turso / memory) | `src/store.ts` |
@@ -138,8 +138,6 @@ optional Wyzie / SubSource keys.
 
 - `/configure`, `/<config>/configure` — install page; `<config>` is base64url JSON (old URI-encoded JSON links still work)
 - `/<config>/manifest.json`
-- `/<config>/stream/:type/:id.json` — always empty (for players holding an older manifest)
-- `/<config>/play/:token` — 🎓 links from earlier versions: signed; records the pick, 302 to the stream
 - `/<config>/subtitles/:type/:id[/:extra].json` — the entries (★, ↻, each language alone, ⚠ reports), all under the translation language; Nuvio shows the `id`, so it is the readable name
 - `/<config>/sub/:entry/:type/:id/:ctx/strelingo-<entry>.srt` — one entry (`star`, `alt`, `main`, `trans`, `bad_sync`, `bad_trans`, `bad_main`); `/<config>/dual/...` links from 1.0 still work
 - `/` and `/status` — everyone's activity (locked by `ADMIN_PASSWORD` when set); `/api/status`, `/api/activity`, `/api/login`, `/api/feedback`, `/api/feedback/undo`
@@ -159,8 +157,8 @@ npm run embed        # after editing src/dashboard/page.html (regenerates page.t
 - **Vercel**: import the repo (`vercel.json` routes everything to `src/index.ts` via `@vercel/node`) and connect a
   shared store — Upstash Redis from Vercel's Storage tab (`UPSTASH_REDIS_REST_*` / `KV_REST_API_*` are set for you)
   or Turso (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`). Requests may land on different instances, so
-  finished builds and history live there; builds outlive their response through `waitUntil`; the `/play` signing
-  key is derived from the store token unless `SECRET` is set. Check `/health`: `sharedState` must not be `memory`.
+  finished builds and history live there; builds outlive their response through `waitUntil`; the activity-page
+  login is signed with a key derived from the store token unless `SECRET` is set. Check `/health`: `sharedState` must not be `memory`.
   `src/index.ts` exports `config = { maxDuration: 60 }` so a subtitle request may wait for its build. Set
   `ADMIN_PASSWORD` to lock the activity page.
 - **Docker**: `docker compose up -d`. **Render**: `render.yaml` blueprint. A single long-running process needs no

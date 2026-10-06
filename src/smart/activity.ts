@@ -1,5 +1,5 @@
 // What happened with every subtitle, for the activity page: lists the player
-// asked for, 🎓 streams played, builds (with everything the pipeline decided),
+// asked for, builds (with everything the pipeline decided),
 // subtitles served, and what the user reported. Append-only, in the shared
 // store, so every instance writes to one log. Never holds stream URLs (they
 // carry debrid tokens): file names and sizes only.
@@ -9,6 +9,7 @@ import { randomUUID } from 'node:crypto';
 import { appendJson, listJson } from '../store.js';
 import type { Bans, BuildInfo } from './pipeline.js';
 
+// "play" events come from versions that listed 🎓 streams (still in the log for a while).
 export type EventKind = 'list' | 'play' | 'build' | 'serve' | 'report' | 'undo';
 
 export interface ActivityEvent {
