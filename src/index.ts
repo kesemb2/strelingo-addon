@@ -6,9 +6,7 @@ import landingTemplate, { type Manifest } from './landingTemplate.js';
 import { browserLanguageMap, languageOptions } from './languages.js';
 import { resolveKitsuToImdb } from './kitsuMapping.js';
 import { OPTIONAL_PROVIDERS, WYZIE_SOURCES } from './providers.js';
-import { encodeConfig, parseUserConfig, signingSource, verifyPayload, type UserConfig } from './config.js';
-import { normName } from './file/upstream.js';
-import { latestPlay, recordPlay, usesPlayLinks } from './smart/plays.js';
+import { encodeConfig, parseUserConfig, signingSource, type UserConfig } from './config.js';
 import { keepAlive, peekResult, startJob, waitForJob, type JobContext } from './smart/jobs.js';
 import { logEvent, type ActivityEvent } from './smart/activity.js';
 import { REPORT_KINDS, applyReport, bansFor, recordServed, type ReportKind } from './smart/feedback.js';
@@ -23,7 +21,7 @@ import { registerDashboard } from './dashboard/routes.js';
 // ---------------------------------------------------------------------------
 
 const ADDON_ID = 'com.kesemb2.strelingo.smart';
-const VERSION = '1.2.0';
+const VERSION = '1.3.0';
 
 // Vercel: let a subtitle request wait for its build (and the build finish
 // after the response) instead of the 10 s default of older projects.
@@ -225,47 +223,9 @@ function decodeCtx(seg: string): FileCtx {
     }
 }
 
-// A play record with nothing to check it against (Nuvio's phone app says
-// nothing about the file) is trusted for about a film's length.
-const UNCHECKED_PLAY_MAX_AGE_MS = 4 * 3600_000;
-
-/**
- * The best knowledge of the playing file. A 🎓 play gives the file's URL, but
- * only counts while it is the file the player describes now: an older pick
- * must not override a different stream played since.
- */
-async function resolveFile(config: UserConfig, videoId: string, said: FileCtx): Promise<FileHint> {
-    const played = await latestPlay(config.userKey, videoId);
-    if (played) {
-        const p = played.file;
-        const sameFile = said.s
-            ? p.size === said.s
-            : said.f
-                ? normName(p.filename) === normName(said.f)
-                : Date.now() - played.at < UNCHECKED_PLAY_MAX_AGE_MS;
-        if (sameFile) return { ...p, hash: p.hash || said.h };
-    }
-    if (said.f || said.s || said.h) return { filename: said.f, size: said.s, hash: said.h, via: 'request' };
-    return {};
-}
-
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
-// With a stream add-on configured, a 🎓 play may land a moment after the
-// player asks for subtitles: give it a short chance before building blind.
-async function resolveFileWaiting(config: UserConfig, videoId: string, said: FileCtx, waitMs: number): Promise<FileHint> {
-    let file = await resolveFile(config, videoId, said);
-    // Nothing to wait for when the player named the file itself, or when
-    // this user never plays 🎓 streams.
-    if (!config.streamAddonUrl || file.via === 'play' || said.f || said.s) return file;
-    if (!(await usesPlayLinks(config.userKey))) return file;
-    const until = Date.now() + waitMs;
-    while (Date.now() < until) {
-        await sleep(250);
-        file = await resolveFile(config, videoId, said);
-        if (file.via === 'play') break;
-    }
-    return file;
+/** What the player said about the file (Stremio and NuvioTV say; Nuvio's phone app doesn't). */
+function fileFromRequest(said: FileCtx): FileHint {
+    return said.f || said.s || said.h ? { filename: said.f, size: said.s, hash: said.h, via: 'request' } : {};
 }
 
 // A message as a subtitle, repeated through the whole film: the viewer may
@@ -295,8 +255,8 @@ function explainText(notes: string[], config: UserConfig): string {
 const app = new Hono();
 app.use('*', cors());
 
-// sharedState "memory" on Vercel means 🎓 picks and builds don't reach other
-// instances: connect Upstash or Turso (see README).
+// sharedState "memory" on Vercel means builds, reports and the activity log
+// don't reach other instances: connect Upstash or Turso (see README).
 app.get('/health', c => c.json({
     ok: true,
     version: VERSION,
@@ -328,48 +288,6 @@ app.get('/:config/manifest.json', c => {
     const manifest = withUserDefaults(getManifest(config), config);
     manifest.config = toStremioSafeConfig(manifest.config);
     return c.json(manifest);
-});
-
-// --- /play links from versions that listed 🎓 streams -----------------------
-//
-// Players keep stream links (continue watching), so these still work: they
-// note the file being played and redirect to it.
-
-interface PlayPayload {
-    v: string;   // video id
-    t: string;   // type
-    u: string;   // stream URL
-    f?: string;  // filename
-    s?: number;  // size
-    hd?: Record<string, string>; // request headers the stream needs
-}
-
-// The add-on no longer lists streams; a player holding an older manifest
-// still asks, and gets none.
-app.get('/:config/stream/:type/:id', c => c.json({ streams: [] }));
-
-// Note which file this user is playing, start preparing its subtitles, and
-// hand the player the real URL. Players re-open the URL on every seek, so
-// this stays a cheap redirect.
-app.on(['GET', 'HEAD'], '/:config/play/:token', async c => {
-    const config = parseUserConfig(c.req.param('config'));
-    const payload = verifyPayload<PlayPayload>(c.req.param('token'));
-    if (!config || !payload?.u || !/^https?:\/\//.test(payload.u)) return c.text('invalid link', 400);
-
-    const file: FileHint = { url: payload.u, filename: payload.f, size: payload.s, headers: payload.hd, via: 'play' };
-    if (await recordPlay(config.userKey, payload.v, file)) {
-        const ids = parseVideoId(payload.t, payload.v);
-        if (ids) {
-            console.log(`[play] ${payload.v} ${payload.f || ''}`);
-            const jctx = jobContext(config);
-            keepAlive((async () => {
-                const bans = await bansFor(config.userKey, ids.videoId);
-                startJob(smartRequest(config, payload.t, ids, file, 1, bans), jctx);
-                await logEvent({ kind: 'play', user: config.userKey, pair: jctx.pair, type: payload.t, videoId: ids.videoId, file: fileSummary(file) });
-            })());
-        }
-    }
-    return c.redirect(payload.u, 302);
 });
 
 // --- Subtitles -------------------------------------------------------------
@@ -405,8 +323,6 @@ function entryLabels(config: UserConfig, basis: string): Record<EntryKind, strin
     };
 }
 
-const PLAY_GRACE_LIST_MS = 2_500;
-
 async function handleSubtitles(c: Context) {
     const config = parseUserConfig(c.req.param('config'));
     const type = c.req.param('type') || 'movie';
@@ -420,17 +336,16 @@ async function handleSubtitles(c: Context) {
 
     const said = parseExtra(extra);
     const ctx: FileCtx = { f: said.filename, s: said.size, h: said.hash };
-    const [file, bans] = await Promise.all([resolveFile(config, ids.videoId, ctx), bansFor(config.userKey, ids.videoId)]);
+    const file = fileFromRequest(ctx);
+    const bans = await bansFor(config.userKey, ids.videoId);
     const knowsFile = Boolean(file.url || file.filename || file.size || file.hash);
     const jctx = jobContext(config);
 
     // Start preparing now so the subtitle is ready when it's picked; the
     // alternative right after, on the same downloads.
     const kick = async () => {
-        const f = file.via === 'play' ? file : await resolveFileWaiting(config, ids.videoId, ctx, PLAY_GRACE_LIST_MS);
-        const star = startJob(smartRequest(config, type, ids, f, 1, bans), jctx);
-        await star.done;
-        await startJob(smartRequest(config, type, ids, f, 2, bans), jctx).done;
+        await startJob(smartRequest(config, type, ids, file, 1, bans), jctx).done;
+        await startJob(smartRequest(config, type, ids, file, 2, bans), jctx).done;
     };
     keepAlive(kick());
 
@@ -468,7 +383,6 @@ app.get('/:config/subtitles/:type/:id', handleSubtitles);
 const SRT_WAIT_MS = Number(process.env.SRT_WAIT_MS || 30_000);
 const FIRST_WAIT_MS = 7_000;
 const KEEPALIVE_MS = 4_000;
-const PLAY_GRACE_SRT_MS = 3_000;
 
 function entryText(out: BuildOutput | null, entry: EntryKind, config: UserConfig): { text: string; ok: boolean } {
     if (!out) return { text: messageSrt(explainText([], config)), ok: false };
@@ -490,7 +404,7 @@ async function serveEntry(c: Context, entry: EntryKind) {
 
     const t0 = Date.now();
     const jctx = jobContext(config);
-    const file = await resolveFileWaiting(config, ids.videoId, decodeCtx(c.req.param('ctx') || '-'), PLAY_GRACE_SRT_MS);
+    const file = fileFromRequest(decodeCtx(c.req.param('ctx') || '-'));
 
     // "⚠ ... · replace": learn from it, then serve the replacement right away.
     if (isReport(entry)) {

@@ -5,7 +5,6 @@ process.env.SECRET = 'test-secret-test-secret-test-secret';
 process.env.EXTERNAL_URL = 'https://strelingo.test';
 
 const { default: app, encodeConfig } = await import('../src/index.js');
-const { signPayload } = await import('../src/config.js');
 const { deriveSubtitle } = await import('./synthetic.js');
 const { FILENAME, IMDB, PAL, STREAM_ADDON, makeWorld, srtAccuracy } = await import('./world.js');
 
@@ -54,13 +53,12 @@ async function lastBuild(cfg: string): Promise<any> {
     return (await events(cfg)).find(e => e.kind === 'build' && e.variant === 1)?.info;
 }
 const entry = (list: any, kind: string) => list.subtitles.find((s: any) => s.url.includes(`/sub/${kind}/`));
-// A 🎓 link from an earlier version, still kept by the player (continue watching).
-const oldPlayLink = (cfg: string, world: { fileUrl: string; mkv: Uint8Array }) =>
-    `/${cfg}/play/${signPayload({ v: IMDB, t: 'movie', u: world.fileUrl, f: FILENAME, s: world.mkv.length })}`;
+// What NuvioTV and Stremio send with a subtitle request: the playing file's name and size.
+const namedFile = (world: { mkv: Uint8Array }) => `filename=${encodeURIComponent(FILENAME)}&videoSize=${world.mkv.length}`;
 // French line then English line; by default each in its own color.
 const TWO_LINES = /<font color="#FFE066"><b>.+<\/b><\/font>\n<font color="#8CD9FF"><i>> .+<\/i><\/font>/;
 
-await check('manifest: subtitles only; a player with an older manifest asking for streams gets none', async () => {
+await check('manifest: a subtitles add-on only — no streams, no stream links', async () => {
     const cfg = configWithStreams();
     const res = await get(`/${cfg}/manifest.json`);
     const m: any = await res.json();
@@ -70,8 +68,8 @@ await check('manifest: subtitles only; a player with an older manifest asking fo
     const bare: any = await (await get('/manifest.json')).json();
     assert.deepEqual(bare.resources, ['subtitles']);
     assert.equal(bare.behaviorHints.configurationRequired, true);
-    const streams: any = await (await get(`/${cfg}/stream/movie/${IMDB}.json`)).json();
-    assert.deepEqual(streams.streams, []);
+    assert.equal((await get(`/${cfg}/stream/movie/${IMDB}.json`)).status, 404);
+    assert.equal((await get(`/${cfg}/play/anything`)).status, 404);
 });
 
 await check('Nuvio phone: no file info → the timing most subtitles agree on, and ★ says so', async () => {
@@ -92,26 +90,6 @@ await check('Nuvio phone: no file info → the timing most subtitles agree on, a
     assert.ok(['consensus', 'guess'].includes(info.tier), info.tier);
     assert.equal(info.file.known, false);
     void world;
-});
-
-await check('an old 🎓 link the player kept still plays, and syncs the subtitles to its file', async () => {
-    const world = useWorld();
-    const cfg = configWithStreams();
-    const play = await get(oldPlayLink(cfg, world), { method: 'HEAD' });
-    assert.equal(play.status, 302);
-    assert.equal(play.headers.get('location'), world.fileUrl);
-
-    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}.json`)).json();
-    const srt = await (await get(list.subtitles[0].url)).text();
-    const acc = srtAccuracy(srt, world.speech);
-    assert.ok(acc > 0.95, `accuracy ${acc}`);
-    const info = await lastBuild(cfg);
-    assert.equal(info.tier, 'file');
-    assert.equal(info.file.via, 'play');
-
-    // Once built, ★ says what it is synced to.
-    const again: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}.json`)).json();
-    assert.equal(again.subtitles[0].id, '★ צרפתית+אנגלית · מסונכרן לקובץ');
 });
 
 await check('the entries: ★, ↻, each language alone, and the ⚠ ones', async () => {
@@ -176,8 +154,7 @@ await check('a color per language: French yellow, English light blue by default;
 await check('"⚠ the sync is bad" teaches it: the next ★ uses another timing, undo brings it back', async () => {
     const world = useWorld();
     const cfg = configWithStreams();
-    await get(oldPlayLink(cfg, world), { method: 'HEAD' });
-    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}.json`)).json();
+    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}/${namedFile(world)}.json`)).json();
     await (await get(list.subtitles[0].url)).text();
     await settle();
 
@@ -232,20 +209,6 @@ await check('"⚠ the English is bad" swaps the English subtitle only', async ()
     delete process.env.REPORT_MIN_VIEW_MS;
 });
 
-await check('an earlier 🎓 pick does not override a different stream the player names now', async () => {
-    const world = useWorld();
-    const cfg = configWithStreams();
-    await get(oldPlayLink(cfg, world), { method: 'HEAD' });
-    // Later the player (NuvioTV) reports another stream of the same title.
-    const other = 'Le.Film.2021.2160p.BluRay-XYZ.mkv';
-    const extra = `filename=${encodeURIComponent(other)}&videoSize=40000000000`;
-    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}/${extra}.json`)).json();
-    await (await get(list.subtitles[0].url)).text();
-    const served = (await events(cfg)).find(e => e.kind === 'serve');
-    assert.equal(served.info.file.filename, other, JSON.stringify(served.info.file));
-    assert.notEqual(served.info.file.via, 'play');
-});
-
 await check('build keys: same name + size is the same file; a bare generic name is not; reports change it', async () => {
     const { jobKey } = await import('../src/smart/jobs.js');
     const base = {
@@ -266,14 +229,17 @@ await check('build keys: same name + size is the same file; a bare generic name 
 await check('NuvioTV / Stremio: player sends the file name → found in AIOStreams → exact sync', async () => {
     const world = useWorld();
     const cfg = configWithStreams();
-    const extra = `filename=${encodeURIComponent(FILENAME)}&videoSize=${world.mkv.length}`;
-    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}/${extra}.json`)).json();
+    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}/${namedFile(world)}.json`)).json();
     const srt = await (await get(list.subtitles[0].url)).text();
     assert.ok(srtAccuracy(srt, world.speech) > 0.95);
     // Built for an earlier user with the same file: served from that build.
     const served = (await events(cfg)).find(e => e.kind === 'serve');
     assert.equal(served.info.tier, 'file');
-    assert.match(served.info.file.via, /upstream/);
+    assert.equal(served.info.file.via, 'request+upstream');
+
+    // Once built, ★ says what it is synced to.
+    const again: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}/${namedFile(world)}.json`)).json();
+    assert.equal(again.subtitles[0].id, '★ צרפתית+אנגלית · מסונכרן לקובץ');
 });
 
 await check('no stream add-on, no file info: ★ and ↻ both carry two lines', async () => {
@@ -305,13 +271,6 @@ await check('same main and translation language: nothing offered', async () => {
     const cfg = encodeConfig({ mainLang: 'French [fre]', transLang: 'French [fre]' });
     const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}.json`)).json();
     assert.equal(list.subtitles.length, 0);
-});
-
-await check('/play refuses tampered links (no open redirect)', async () => {
-    const cfg = configWithStreams();
-    const forged = Buffer.from(JSON.stringify({ v: IMDB, t: 'movie', u: 'https://evil.example/' })).toString('base64url');
-    const res = await get(`/${cfg}/play/${forged}.AAAA`);
-    assert.equal(res.status, 400);
 });
 
 await check('no main-language subtitles: the player gets a readable explanation all through the film', async () => {

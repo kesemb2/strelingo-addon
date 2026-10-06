@@ -2,7 +2,7 @@
 // https://host/<config>/manifest.json. New links carry it as base64url JSON;
 // links from the original Strelingo (URI-encoded JSON) still work.
 
-import { createHash, createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, randomBytes } from 'node:crypto';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -68,8 +68,8 @@ export function parseUserConfig(segment: string | undefined, fallbackTransLang =
 }
 
 // --- Signing ---------------------------------------------------------------
-// /play links carry the real stream URL; they are signed so the add-on can't
-// be used to redirect to, or probe, arbitrary URLs.
+// A secret every server instance shares: it signs the activity page's login
+// cookie.
 
 let secretCache: string | null = null;
 
@@ -102,29 +102,7 @@ export function signingSecret(): string {
         mkdirSync(dir, { recursive: true });
         writeFileSync(file, generated, { mode: 0o600 });
     } catch (e: any) {
-        console.warn(`[config] could not store a signing secret in ${dir} (${e.message}); /play links will break on restart. Set SECRET.`);
+        console.warn(`[config] could not store a signing secret in ${dir} (${e.message}); activity-page logins will end on restart. Set SECRET.`);
     }
     return (secretCache = generated);
-}
-
-function mac(data: string): string {
-    return createHmac('sha256', signingSecret()).update(data).digest('base64url');
-}
-
-export function signPayload(payload: unknown): string {
-    const body = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
-    return `${body}.${mac(body)}`;
-}
-
-export function verifyPayload<T>(token: string): T | null {
-    const [body, sig, extra] = (token || '').split('.');
-    if (!body || !sig || extra !== undefined || token.length > 16_384) return null;
-    const expected = Buffer.from(mac(body));
-    const got = Buffer.from(sig);
-    if (expected.length !== got.length || !timingSafeEqual(expected, got)) return null;
-    try {
-        return JSON.parse(Buffer.from(body, 'base64url').toString('utf8')) as T;
-    } catch {
-        return null;
-    }
 }

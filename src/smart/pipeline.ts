@@ -42,7 +42,7 @@ export interface FileHint {
     filename?: string;
     size?: number;
     hash?: string;
-    /** How the add-on learned about the file: "play" (a 🎓 stream), "request" (the player said), "upstream". */
+    /** How the add-on learned about the file: "request" (the player said), "upstream" (found in AIOStreams). */
     via?: string;
 }
 
