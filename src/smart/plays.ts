@@ -23,11 +23,11 @@ export async function recordPlay(userKey: string, videoId: string, file: FileHin
     return changed;
 }
 
-export async function latestPlay(userKey: string, videoId: string): Promise<FileHint | null> {
+export async function latestPlay(userKey: string, videoId: string): Promise<{ file: FileHint; at: number } | null> {
     const hit = await getJson<FileHint & { at?: number }>(`play:${userKey}|${videoId}`);
     if (!hit) return null;
-    const { at: _at, ...file } = hit;
-    return file;
+    const { at, ...file } = hit;
+    return { file, at: at || 0 };
 }
 
 /** Whether play records reach every instance (false = this process's memory only). */

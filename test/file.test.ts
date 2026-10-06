@@ -5,7 +5,8 @@ import { hashFromChunks } from '../src/file/osHash.js';
 import { probeFile } from '../src/file/probe.js';
 import { RangeReader } from '../src/file/rangeReader.js';
 import { matchesEpisode, parseRelease, releaseScore } from '../src/file/release.js';
-import { addonBase, matchStream } from '../src/file/upstream.js';
+import { addonBase, fetchUpstreamStreams, matchStream } from '../src/file/upstream.js';
+import { assertPublic, safeFetch } from '../src/file/safeFetch.js';
 import { buildMkv, fakeFetch } from './fakeFiles.js';
 
 const passed: string[] = [];
@@ -133,6 +134,42 @@ await check('upstream: finds the playing stream by size or name, never a wrong e
     process.env.ALLOW_PRIVATE_ADDRESSES = 'true';
     assert.equal(addonBase('http://192.168.1.20/abc/manifest.json'), 'http://192.168.1.20/abc');
     delete process.env.ALLOW_PRIVATE_ADDRESSES;
+});
+
+await check('redirects are followed hop by hop, never into private addresses (SSRF)', async () => {
+    const seen: Array<{ url: string; range: string | null }> = [];
+    const hops: Record<string, Response | (() => Response)> = {
+        'https://public.example/a': () => new Response(null, { status: 302, headers: { location: '/b' } }),
+        'https://public.example/b': () => new Response(null, { status: 307, headers: { location: 'https://cdn.example/file' } }),
+        'https://cdn.example/file': () => new Response('ok', { status: 206 }),
+        'https://evil.example/stream/movie/tt1.json': () => new Response(null, { status: 302, headers: { location: 'http://169.254.169.254/latest/meta-data' } }),
+        'https://evil.example/lan': () => new Response(null, { status: 301, headers: { location: 'http://192.168.1.1/admin' } }),
+        'https://evil.example/loop': () => new Response(null, { status: 302, headers: { location: 'https://evil.example/loop' } })
+    };
+    const f = (async (input: any, init?: RequestInit) => {
+        const url = String(input);
+        seen.push({ url, range: new Headers(init?.headers).get('range') });
+        assert.equal(init?.redirect, 'manual', 'never let fetch follow on its own');
+        const h = hops[url];
+        if (!h) throw new Error(`unexpected request to ${url}`);
+        return typeof h === 'function' ? h() : h;
+    }) as typeof fetch;
+
+    const res = await safeFetch('https://public.example/a', { headers: { Range: 'bytes=0-9' } }, f);
+    assert.equal(res.status, 206);
+    assert.deepEqual(seen.map(x => x.url), ['https://public.example/a', 'https://public.example/b', 'https://cdn.example/file']);
+    assert.ok(seen.every(x => x.range === 'bytes=0-9'), 'Range kept across hops');
+
+    await assert.rejects(safeFetch('https://evil.example/lan', {}, f), /private address/);
+    await assert.rejects(safeFetch('https://evil.example/loop', {}, f), /too many redirects/);
+    assert.ok(!seen.some(x => x.url.startsWith('http://192.168.') || x.url.startsWith('http://169.254.')), 'private hop never requested');
+
+    // The stream add-on fetch goes through it too.
+    await assert.rejects(fetchUpstreamStreams('https://evil.example/manifest.json', 'movie', 'tt1', f), /private address/);
+
+    // A public-looking name that resolves to a private address.
+    await assert.rejects(assertPublic(new URL('https://sneaky.example/'), async () => [{ address: '127.0.0.1' }]), /private address/);
+    await assertPublic(new URL('https://fine.example/'), async () => [{ address: '93.184.216.34' }]);
 });
 
 console.log(passed.join('\n'));

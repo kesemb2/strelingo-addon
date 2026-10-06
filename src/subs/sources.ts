@@ -18,6 +18,7 @@ import type { SubtitleCue } from '../subtitleMatching.js';
 import type { Span } from '../sync/aligner.js';
 import { parseSrtTimeToMs } from '../subtitleMatching.js';
 import { SubtitleConverter, parseSrt } from './formats.js';
+import { safeFetch } from '../file/safeFetch.js';
 
 export interface Candidate {
     id: string;
@@ -305,7 +306,7 @@ async function fetchSubtitleText(c: Candidate, fetchImpl: typeof fetch): Promise
     if (!isSafeSubtitleUrl(c.url)) return null;
     const headers: Record<string, string> = {};
     if (c.apiKey) headers['X-API-Key'] = c.apiKey;
-    const res = await fetchImpl(c.url, { headers, signal: AbortSignal.timeout(15_000) });
+    const res = await safeFetch(c.url, { headers, signal: AbortSignal.timeout(15_000) }, fetchImpl);
     if (!res.ok) throw new Error(`download responded ${res.status}`);
     let buffer: Buffer = Buffer.from(await res.arrayBuffer());
     let format = c.format || 'srt';

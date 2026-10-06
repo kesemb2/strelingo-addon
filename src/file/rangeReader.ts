@@ -1,5 +1,7 @@
 // Reads byte ranges of a remote video file without downloading it.
 
+import { safeFetch } from './safeFetch.js';
+
 export class RangeError_ extends Error {
     constructor(public readonly reason: string) {
         super(reason);
@@ -34,11 +36,11 @@ export class RangeReader {
     async read(start: number, length: number): Promise<Uint8Array> {
         if (length <= 0) return new Uint8Array(0);
         if (this.total + length > this.maxTotalBytes) throw new RangeError_('too_large');
-        const res = await this.fetchImpl(this.url, {
+        // Stream links redirect (debrid CDNs); every hop must stay public.
+        const res = await safeFetch(this.url, {
             headers: { ...this.headers, Range: `bytes=${start}-${start + length - 1}` },
-            redirect: 'follow',
             signal: AbortSignal.timeout(this.timeoutMs)
-        });
+        }, this.fetchImpl);
         if (res.status === 200 && start > 0) {
             await res.body?.cancel().catch(() => undefined);
             throw new RangeError_('range_not_supported');

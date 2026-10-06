@@ -56,9 +56,12 @@ function resultKey(key: string): string {
 
 export function jobKey(req: SmartRequest): string {
     const f = req.file;
-    const fileId = f.filename || f.size
-        ? `f:${f.filename || ''}|${f.size || ''}|${f.url ? 'u' : '-'}`
-        : f.url ? `u:${f.url}` : f.hash ? `h:${f.hash}` : 'none';
+    // Name + exact byte size is the same file whichever link serves it (debrid
+    // links rotate their tokens, so the URL would defeat reuse). Without a
+    // size, a name alone may be generic: then the link or hash identifies it.
+    const fileId = f.size
+        ? `f:${f.filename || ''}|${f.size}|${f.url ? 'u' : '-'}`
+        : f.url ? `u:${f.url}` : f.hash ? `h:${f.hash}` : f.filename ? `n:${f.filename}` : 'none';
     const keys = `${req.optional.mode}|${req.optional.subsourceKey ? 's' : ''}${req.optional.wyzieKey ? 'w' : ''}`;
     return [req.videoId, req.mainLang, req.transLang, `v${req.variant}`, fileId, keys].join('|');
 }

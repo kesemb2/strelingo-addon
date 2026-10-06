@@ -6,7 +6,7 @@
 import { MKV_HEAD_BYTES, readMkvSubtitleTimings, type MkvResult } from './mkv.js';
 import { hashFromChunks } from './osHash.js';
 import { RangeReader } from './rangeReader.js';
-import { isPublicHost } from './upstream.js';
+import { isPublicHost } from './safeFetch.js';
 
 export interface ProbeResult {
     hash?: string;

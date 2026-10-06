@@ -7,7 +7,7 @@ import { browserLanguageMap, languageName, languageOptions } from './languages.j
 import { resolveKitsuToImdb } from './kitsuMapping.js';
 import { OPTIONAL_PROVIDERS, WYZIE_SOURCES } from './providers.js';
 import { encodeConfig, parseUserConfig, signingSource, signPayload, verifyPayload, type UserConfig } from './config.js';
-import { fetchUpstreamStreams, type UpstreamStream } from './file/upstream.js';
+import { fetchUpstreamStreams, normName, type UpstreamStream } from './file/upstream.js';
 import { latestPlay, playsShared, recordPlay } from './smart/plays.js';
 import { keepAlive, recentBuilds, startJob, waitForJob } from './smart/jobs.js';
 import { getStore } from './store.js';
@@ -198,10 +198,26 @@ function decodeCtx(seg: string): FileCtx {
     }
 }
 
-/** The best knowledge of the playing file: a 🎓 play beats what the player said. */
+// A play record with nothing to check it against (Nuvio's phone app says
+// nothing about the file) is trusted for about a film's length.
+const UNCHECKED_PLAY_MAX_AGE_MS = 4 * 3600_000;
+
+/**
+ * The best knowledge of the playing file. A 🎓 play gives the file's URL, but
+ * only counts while it is the file the player describes now: an older pick
+ * must not override a different stream played since.
+ */
 async function resolveFile(config: UserConfig, videoId: string, said: FileCtx): Promise<FileHint> {
     const played = await latestPlay(config.userKey, videoId);
-    if (played) return { ...played, hash: played.hash || said.h };
+    if (played) {
+        const p = played.file;
+        const sameFile = said.s
+            ? p.size === said.s
+            : said.f
+                ? normName(p.filename) === normName(said.f)
+                : Date.now() - played.at < UNCHECKED_PLAY_MAX_AGE_MS;
+        if (sameFile) return { ...p, hash: p.hash || said.h };
+    }
     if (said.f || said.s || said.h) return { filename: said.f, size: said.s, hash: said.h, via: 'request' };
     return {};
 }

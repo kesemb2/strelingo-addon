@@ -77,6 +77,35 @@ await check('Nuvio phone: 🎓 stream → play → subtitles with no file info �
     assert.equal(status.builds[0].info.file.via, 'play');
 });
 
+await check('an earlier 🎓 pick does not override a different stream the player names now', async () => {
+    const world = useWorld();
+    const cfg = configWithStreams();
+    const streams: any = await (await get(`/${cfg}/stream/movie/${IMDB}.json`)).json();
+    const ours = streams.streams.find((s: any) => s.behaviorHints?.filename === FILENAME);
+    await get(ours.url, { method: 'HEAD' });
+    // Later the player (NuvioTV) reports another stream of the same title.
+    const other = 'Le.Film.2021.2160p.BluRay-XYZ.mkv';
+    const extra = `filename=${encodeURIComponent(other)}&videoSize=40000000000`;
+    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}/${extra}.json`)).json();
+    await (await get(list.subtitles[0].url)).text();
+    const status: any = await (await get(`/${cfg}/status`)).json();
+    assert.equal(status.builds[0].info.file.filename, other, JSON.stringify(status.builds[0].info.file));
+    assert.notEqual(status.builds[0].info.file.via, 'play');
+    void world;
+});
+
+await check('build keys: same name + size is the same file; a bare generic name is not', async () => {
+    const { jobKey } = await import('../src/smart/jobs.js');
+    const base = {
+        type: 'movie', videoId: IMDB, imdbId: IMDB, mainLang: 'fre', transLang: 'eng', variant: 1 as const,
+        optional: { wyzieKey: '', wyzieSources: [], subsourceKey: '', mode: 'fallback' as const }
+    };
+    const k = (file: object) => jobKey({ ...base, file });
+    assert.equal(k({ url: 'https://d/1?token=a', filename: 'a.mkv', size: 5 }), k({ url: 'https://d/9?token=b', filename: 'a.mkv', size: 5 }));
+    assert.notEqual(k({ url: 'https://d/1', filename: 'video.mkv' }), k({ url: 'https://d/2', filename: 'video.mkv' }));
+    assert.notEqual(k({ filename: 'a.mkv', size: 5 }), k({ filename: 'a.mkv', size: 6 }));
+});
+
 await check('NuvioTV / Stremio: player sends the file name → found in AIOStreams → exact sync', async () => {
     const world = useWorld();
     const cfg = configWithStreams();
