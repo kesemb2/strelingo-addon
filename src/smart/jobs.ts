@@ -63,7 +63,8 @@ export function jobKey(req: SmartRequest): string {
     const bans = req.bans && (req.bans.refs.length || req.bans.subs.length)
         ? `b:${digest([...req.bans.refs].sort().join(',') + '|' + [...req.bans.subs].sort().join(','))}`
         : 'b:-';
-    return [req.videoId, req.mainLang, req.transLang, `v${req.variant}`, fileId, keys, bans].join('|');
+    const colors = req.colors?.main || req.colors?.trans ? `c:${req.colors.main || '-'}/${req.colors.trans || '-'}` : 'c:-';
+    return [req.videoId, req.mainLang, req.transLang, `v${req.variant}`, fileId, keys, bans, colors].join('|');
 }
 
 function isFresh(job: Job): boolean {

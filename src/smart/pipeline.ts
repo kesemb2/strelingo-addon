@@ -31,6 +31,7 @@ import { fetchUpstreamStreams, matchStream, playingFileOf } from '../file/upstre
 import { ISO639_3_TO_1 } from '../encoding.js';
 import type { OptionalProviderConfig } from '../providers.js';
 import { formatSrt } from '../subs/formats.js';
+import { dualFormatter, paint, type LineColors } from '../subs/style.js';
 import { listCandidates, loadSubtitle, type Candidate, type CandidateLists, type LoadedSubtitle } from '../subs/sources.js';
 import { mergeSubtitlesByTime, type SubtitleCue } from '../subtitleMatching.js';
 import { alignToReference, sameTimelineScore, type AlignResult, type Span } from '../sync/aligner.js';
@@ -69,6 +70,8 @@ export interface SmartRequest {
     /** 1 = best (★); 2 = the alternative (↻): another timeline or the next-best pair. */
     variant: 1 | 2;
     bans?: Bans;
+    /** A color per language line. */
+    colors?: LineColors;
 }
 
 export type Tier = 'file' | 'hash' | 'consensus' | 'guess' | 'none';
@@ -549,10 +552,14 @@ export async function buildDual(
     }
     timings.align = Date.now() - tAlign;
 
-    // 6. Merge on the shared timeline.
+    // 6. Merge on the shared timeline, a color per language.
+    const colors = req.colors || {};
     const mainCues = retime(main.loaded.cues, main.spans);
     const transCues = trans ? retime(trans.loaded.cues, trans.spans) : null;
-    const cues = transCues ? mergeSubtitlesByTime(mainCues, transCues, 500, { align: false }) : mainCues;
+    const painted = (list: SubtitleCue[], color?: string) => list.map(c => ({ ...c, text: paint(c.text, color) }));
+    const cues = transCues
+        ? mergeSubtitlesByTime(mainCues, transCues, 500, { align: false, format: dualFormatter(colors) })
+        : painted(mainCues, colors.main);
     const srt = formatSrt(cues);
     if (!srt) {
         notes.push('format_failed');
@@ -574,5 +581,10 @@ export async function buildDual(
             trans: evTrans.map(candidateInfo)
         }
     });
-    return { srt, mainSrt: formatSrt(mainCues), transSrt: transCues ? formatSrt(transCues) : null, info };
+    return {
+        srt,
+        mainSrt: formatSrt(painted(mainCues, colors.main)),
+        transSrt: transCues ? formatSrt(painted(transCues, colors.trans)) : null,
+        info
+    };
 }

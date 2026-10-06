@@ -15,6 +15,7 @@ import { REPORT_KINDS, applyReport, bansFor, recordServed, type ReportKind } fro
 import { getStore } from './store.js';
 import type { Bans, BuildOutput, FileHint, SmartRequest } from './smart/pipeline.js';
 import { hebrewLanguageName } from './languages.js';
+import { COLOR_OPTIONS, DEFAULT_MAIN_COLOR, DEFAULT_TRANS_COLOR } from './subs/style.js';
 import { registerDashboard } from './dashboard/routes.js';
 
 // ---------------------------------------------------------------------------
@@ -68,6 +69,16 @@ function getManifest(config?: UserConfig | null): Manifest {
                     + 'The add-on then lists its streams marked 🎓 — play one of those, and both subtitle lines are '
                     + 'synced to that exact file. Nuvio\'s phone app tells subtitle add-ons nothing about the file, '
                     + 'so this is the only way to get exact sync there.'
+            },
+            {
+                key: 'mainColor', type: 'select', title: 'Main language color',
+                options: [...COLOR_OPTIONS], default: DEFAULT_MAIN_COLOR,
+                description: 'Each language in its own color. Nuvio on Android phones shows colors only with '
+                    + 'Settings → Playback → Playback engine → libmpv (iOS and NuvioTV show them as is).'
+            },
+            {
+                key: 'transColor', type: 'select', title: 'Translation color',
+                options: [...COLOR_OPTIONS], default: DEFAULT_TRANS_COLOR
             },
             {
                 key: OPTIONAL_PROVIDERS.wyzie.key, type: 'password', title: OPTIONAL_PROVIDERS.wyzie.title,
@@ -177,7 +188,7 @@ function smartRequest(config: UserConfig, type: string, ids: VideoIds, file: Fil
     return {
         type, videoId: ids.videoId, imdbId: ids.imdbId, season: ids.season, episode: ids.episode, butaId: ids.butaId,
         mainLang: config.mainLang, transLang: config.transLang, optional: config.optional,
-        upstreamUrl: config.streamAddonUrl, file, variant, bans
+        upstreamUrl: config.streamAddonUrl, file, variant, bans, colors: config.colors
     };
 }
 

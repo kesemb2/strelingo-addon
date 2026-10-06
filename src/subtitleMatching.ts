@@ -241,6 +241,17 @@ export interface MergeOptions {
      * both tracks were already synced to the same reference timeline.
      */
     align?: boolean;
+    /**
+     * Writes an entry's text from its main line and its translation (either
+     * may be missing). Default: main in bold, translation in italics after "> ".
+     */
+    format?: (main: string | null, trans: string | null) => string;
+}
+
+function defaultFormat(main: string | null, trans: string | null): string {
+    if (main !== null && trans !== null) return `<b>${main}</b>\n<i>> ${trans}</i>`.trim();
+    if (main !== null) return main;
+    return `<i>> ${trans ?? ''}</i>`;
 }
 
 export function mergeSubtitlesByTime<T extends SubtitleCue>(
@@ -251,6 +262,7 @@ export function mergeSubtitlesByTime<T extends SubtitleCue>(
 ): T[] {
     const mainTimed = buildTimedCues(mainSubs);
     const rawTransTimed = buildTimedCues(transSubs);
+    const format = options.format ?? defaultFormat;
 
     // Estimate the trans->main time alignment, but only use it when it
     // demonstrably matches more cues than the untouched timeline — a wrong
@@ -381,7 +393,7 @@ export function mergeSubtitlesByTime<T extends SubtitleCue>(
             ? mainTimed[mi].text
             : mainTimed.slice(mi, last + 1).map(cue => cue.text).join(' ');
 
-        let mergedText = mainText;
+        let mergedText = format(mainText, null);
         if (picked.length > 0) {
             const parts: string[] = [];
             for (const translation of picked) {
@@ -391,7 +403,7 @@ export function mergeSubtitlesByTime<T extends SubtitleCue>(
             }
             const translationText = parts.join(' ');
             if (translationText) {
-                mergedText = (`<b>${mainText}</b>\n<i>> ${translationText}</i>`).trim();
+                mergedText = format(mainText, translationText);
             }
         }
 
@@ -427,7 +439,7 @@ export function mergeSubtitlesByTime<T extends SubtitleCue>(
                     ...warpedTrans.cue,
                     startTime: formatMsToSrtTime(warpedTrans.startMs),
                     endTime: formatMsToSrtTime(warpedTrans.endMs),
-                    text: `<i>> ${text}</i>`
+                    text: format(null, text)
                 });
             }
         }

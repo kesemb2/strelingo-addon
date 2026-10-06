@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { buildDual, type SmartRequest } from '../src/smart/pipeline.js';
 import { alignToReference } from '../src/sync/aligner.js';
+import { dualFormatter, paint, parseColor } from '../src/subs/style.js';
 import { deriveSubtitle, speechTrack } from './synthetic.js';
 import { FILENAME, IMDB, PAL, STREAM_ADDON, makeWorld, srtAccuracy, srtSpans } from './world.js';
 
@@ -169,6 +170,30 @@ await check('nothing fits the embedded track and the two languages disagree: sti
     const both = (out.srt!.match(/<b>.+<\/b>\n<i>> /g) || []).length;
     const lines = (out.srt!.match(/ --> /g) || []).length;
     assert.ok(both / lines > 0.8, `${both} of ${lines} entries carry both lines`);
+});
+
+await check('colors: each language line in its own color, the plain format unchanged without', async () => {
+    const world = makeWorld(palFirst);
+    const out = await buildDual(request({ url: world.fileUrl, filename: FILENAME, via: 'play' }, {
+        colors: { main: '#FFE066', trans: '#8CD9FF' }
+    }), { fetchImpl: world.fetch });
+    assert.match(out.srt!, /<font color="#FFE066"><b>.+<\/b><\/font>\n<font color="#8CD9FF"><i>> .+<\/i><\/font>/);
+    assert.ok(srtAccuracy(out.srt!, world.speech) > 0.95);
+    assert.match(out.mainSrt!, /^1\n.+\n<font color="#FFE066">/);
+    assert.match(out.transSrt!, /^1\n.+\n<font color="#8CD9FF">/);
+
+    const fmt = dualFormatter({ main: '#FFE066', trans: '#8CD9FF' });
+    assert.equal(fmt('<font color="#ff0000">Bonjour</font>\n<i>toi</i>', 'Hello\nyou'),
+        '<font color="#FFE066"><b>Bonjour\n<i>toi</i></b></font>\n<font color="#8CD9FF"><i>> Hello\nyou</i></font>',
+        'one block per language (a source <i> may span its lines); the source\'s own color dropped');
+    assert.equal(fmt('Seul', null), '<font color="#FFE066">Seul</font>');
+    assert.equal(fmt(null, 'Credits'), '<font color="#8CD9FF"><i>> Credits</i></font>');
+    assert.equal(dualFormatter()('Bonjour', 'Hello'), '<b>Bonjour</b>\n<i>> Hello</i>', 'no colors: as before');
+    assert.equal(paint('  ', '#FFE066'), '  ', 'nothing to color');
+    assert.equal(parseColor(undefined, 'Yellow [#FFE066]'), '#FFE066');
+    assert.equal(parseColor('Player default (no color) [none]', 'Yellow [#FFE066]'), undefined);
+    assert.equal(parseColor('#a8f0a0', 'Yellow [#FFE066]'), '#A8F0A0');
+    assert.equal(parseColor('red"><b', 'Yellow [#FFE066]'), undefined);
 });
 
 console.log(passed.join('\n'));

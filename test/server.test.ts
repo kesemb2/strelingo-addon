@@ -53,6 +53,8 @@ async function lastBuild(cfg: string): Promise<any> {
     return (await events(cfg)).find(e => e.kind === 'build' && e.variant === 1)?.info;
 }
 const entry = (list: any, kind: string) => list.subtitles.find((s: any) => s.url.includes(`/sub/${kind}/`));
+// French line then English line; by default each in its own color.
+const TWO_LINES = /<font color="#FFE066"><b>.+<\/b><\/font>\n<font color="#8CD9FF"><i>> .+<\/i><\/font>/;
 
 await check('manifest: configured add-on also serves 🎓 streams', async () => {
     const cfg = configWithStreams();
@@ -122,7 +124,43 @@ await check('the entries: ★, ↻, each language alone, and the ⚠ ones', asyn
     assert.doesNotMatch(fr, /<i>/);
     assert.match(en, /the|you|we|I /);
     const alt = await (await get(entry(list, 'alt').url)).text();
-    assert.match(alt, /<b>.+<\/b>\n<i>> .+<\/i>/);
+    assert.match(alt, TWO_LINES);
+});
+
+await check('a color per language: French yellow, English light blue by default; configurable', async () => {
+    const world = useWorld();
+    const cfg = configWithStreams();
+    const extra = `filename=${encodeURIComponent(FILENAME)}&videoSize=${world.mkv.length}`;
+    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}/${extra}.json`)).json();
+    const star = await (await get(list.subtitles[0].url)).text();
+    assert.match(star, TWO_LINES);
+    const fr = await (await get(entry(list, 'main').url)).text();
+    const cues = fr.split('\n\n').filter(Boolean);
+    assert.ok(cues.every(c => /\n<font color="#FFE066">[^]*<\/font>$/.test(c.trim())), 'every French entry colored');
+    const en = await (await get(entry(list, 'trans').url)).text();
+    assert.match(en, /<font color="#8CD9FF">/);
+    assert.doesNotMatch(en, /#FFE066/);
+
+    // Chosen on the configure page: no color for French, white for English.
+    const plain = encodeConfig({
+        mainLang: 'French [fre]', transLang: 'English [eng]', streamAddonUrl: STREAM_ADDON, n: ++userN,
+        mainColor: 'Player default (no color) [none]', transColor: 'White [#FFFFFF]'
+    });
+    const list2: any = await (await get(`/${plain}/subtitles/movie/${IMDB}/${extra}.json`)).json();
+    const star2 = await (await get(list2.subtitles[0].url)).text();
+    assert.match(star2, /\n<b>.+<\/b>\n<font color="#FFFFFF"><i>> .+<\/i><\/font>\n/);
+    assert.doesNotMatch(star2, /#FFE066|#8CD9FF/);
+
+    // Only a real color ever reaches the subtitle text.
+    const { parseUserConfig } = await import('../src/config.js');
+    const evil = parseUserConfig(encodeConfig({ mainLang: 'French [fre]', mainColor: 'x [#fff"><script>]', transColor: 'Pink [#ffb3d9]' }));
+    assert.deepEqual(evil?.colors, { main: undefined, trans: '#FFB3D9' });
+    const old = parseUserConfig(encodeConfig({ mainLang: 'French [fre]', transLang: 'English [eng]' }));
+    assert.deepEqual(old?.colors, { main: '#FFE066', trans: '#8CD9FF' }, 'links installed before colors get the defaults');
+
+    const m: any = await (await get(`/${cfg}/manifest.json`)).json();
+    const keys = m.config.map((c: any) => c.key);
+    assert.ok(keys.includes('mainColor') && keys.includes('transColor'));
 });
 
 await check('"⚠ the sync is bad" teaches it: the next ★ uses another timing, undo brings it back', async () => {
@@ -213,6 +251,9 @@ await check('build keys: same name + size is the same file; a bare generic name 
     assert.notEqual(k({ filename: 'a.mkv', size: 5 }), k({ filename: 'a.mkv', size: 6 }));
     assert.equal(k({ size: 5 }), k({ size: 5 }, { refs: [], subs: [] }));
     assert.notEqual(k({ size: 5 }), k({ size: 5 }, { refs: ['file'], subs: [] }));
+    const colored = jobKey({ ...base, file: { size: 5 }, colors: { main: '#FFE066', trans: '#8CD9FF' } });
+    assert.notEqual(colored, k({ size: 5 }), 'a color change never serves an old build');
+    assert.notEqual(colored, jobKey({ ...base, file: { size: 5 }, colors: { main: '#FFE066', trans: '#FFFFFF' } }));
 });
 
 await check('NuvioTV / Stremio: player sends the file name → found in AIOStreams → exact sync', async () => {
@@ -236,7 +277,7 @@ await check('no stream add-on, no file info: ★ and ↻ both carry two lines', 
     for (const kind of ['star', 'alt']) {
         const srt = await (await get(entry(list, kind).url)).text();
         assert.match(srt, /^1\n\d\d:\d\d:\d\d,\d\d\d --> /m);
-        assert.match(srt, /<b>.+<\/b>\n<i>> .+<\/i>/);
+        assert.match(srt, TWO_LINES);
     }
 });
 
