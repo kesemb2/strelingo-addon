@@ -19,9 +19,9 @@
 
 ## איך זה עובד עכשיו
 
-**שלב 1 — לזהות את הקובץ המתנגן.** אם הדבקתם בהגדרות את קישור ה-AIOStreams שלכם, התוסף מציג את אותם
-סטרימים מסומנים ב-🎓. כשמנגנים סטרים 🎓, הנגן עובר דרך התוסף לשבריר שנייה (הפניה, בלי להעביר וידאו),
-וכך התוסף יודע בדיוק איזה קובץ מתנגן — גם בטלפון. ב-Stremio/NuvioTV, שם הקובץ שהנגן שולח מספיק כדי למצוא אותו ב-AIOStreams.
+**שלב 1 — לזהות את הקובץ המתנגן**, כמו ב-Smart-Hebrew: כשהנגן מוסר את שם הקובץ וגודלו (Stremio, NuvioTV) והדבקתם
+בהגדרות את קישור ה-AIOStreams שלכם, התוסף מוצא את הקובץ ברשימת ה-AIOStreams. אפליקציית Nuvio בטלפון לא מוסרת
+לתוספי כתוביות שום פרט על הקובץ, אז שם אין קובץ לזהות — והתזמון הוא זה שרוב הכתוביות מסכימות עליו (שלב 2).
 
 **שלב 2 — ציר זמן אמיתי של הסרט**, מהטוב לפחות טוב:
 - **מתוך הקובץ עצמו**: תזמוני הכתוביות המוטמעות ב-MKV, נקראים מאינדקס הקובץ בכמה בקשות קטנות (בדרך כלל פחות ממגה, לא הסרט כולו).
@@ -57,12 +57,13 @@
    **שרת משלכם**: `docker compose up -d`, או `npm install && npm start`.
 2. פותחים את כתובת השרת בדפדפן (`/configure`) → דף ההגדרות:
    - שפה ראשית: **French**, שפת תרגום: **English** (אלה ברירות המחדל).
-   - **מדביקים את קישור ה-AIOStreams** (ה-manifest, בדיוק כמו שהותקן ב-Nuvio). זה מה שנותן סנכרון מדויק.
+   - **מדביקים את קישור ה-AIOStreams** (ה-manifest, בדיוק כמו שהותקן ב-Nuvio). כך התוסף מוצא את הקובץ שמתנגן
+     כשהנגן מוסר את שמו (Stremio, NuvioTV). התוסף לא מציג זרמים משלו — בוחרים זרם כרגיל ב-AIOStreams.
 3. **Copy Link** → ב-Nuvio: Settings → Addons → מדביקים את הקישור. (ב-Stremio אפשר ללחוץ Install.)
 
 ## שימוש
 
-1. בוחרים סרט → **בוחרים סטרים שמתחיל ב-🎓** (באותה איכות שהייתם בוחרים ב-AIOStreams).
+1. בוחרים סרט וזרם כרגיל.
 2. בנגן → כתוביות → תחת **אנגלית** (השפה שלכם) מופיעות האפשרויות של התוסף, כל אחת בשם שאומר מה היא:
 
 | אפשרות | מה זה |
@@ -77,8 +78,8 @@
 מראש לא "מדווחים" בטעות), ופעם אחת לכל כתובית שהוגשה. מה שדווח עובר לסוף התור — לא נמחק: אם אין שום אפשרות אחרת,
 עדיף משהו מכלום. כל דיווח אפשר לבטל בדף הפעילות.
 
-אם בחרתם סטרים רגיל (לא 🎓) בטלפון, התוסף לא יודע מה מתנגן ויבחר את התזמון שרוב הכתוביות מסכימות עליו — בדרך כלל
-טוב, אבל בלי ערובה.
+ב-Nuvio בטלפון התוסף לא יודע איזה קובץ מתנגן, ובוחר את התזמון שרוב הכתוביות מסכימות עליו — בדרך כלל טוב, אבל
+בלי ערובה; אם לא, `↻` או `⚠ הסנכרון לא טוב · החלף`.
 
 ### דף הפעילות — מה קרה עם כל כתובית
 
@@ -119,7 +120,7 @@ Every merged option inherited that timing. Nuvio's phone app sends subtitle add-
 
 | Step | What | Where |
 |---|---|---|
-| Identify the file | 🎓 streams: the user's stream add-on (AIOStreams) re-listed with `/play` links that record the pick and 302 to the real URL. Or `filename`/`videoSize` from the player, matched against the stream add-on. | `src/file/upstream.ts`, `src/smart/plays.ts`, `src/index.ts` |
+| Identify the file | `filename`/`videoSize` from the player (Stremio, NuvioTV), matched against the user's stream add-on (AIOStreams) — the Smart-Hebrew way. Nuvio's phone app sends no file info. (Versions up to 1.1 re-listed the streams as 🎓 `/play` links; those links still work.) | `src/file/upstream.ts`, `src/smart/plays.ts`, `src/index.ts` |
 | Read the file | OpenSubtitles hash (2 × 64 KiB) and embedded subtitle timings from the MKV Cues index (Range requests, typically < 1 MB) | `src/file/probe.ts`, `src/file/mkv.ts`, `src/file/osHash.ts` |
 | Reference timeline | file's embedded text track → hash-matched subtitle → consensus of downloaded subtitles (film speed preferred over PAL) → top guess. A reference counts only once a subtitle fits it (a signs-only or picture track is passed over); reported ones go last | `src/smart/pipeline.ts` |
 | Align | fps ratio + global offset by overlap scoring, then a split DP for cuts; rejects subtitles of another movie/episode by contrast against chance | `src/sync/aligner.ts` |
@@ -128,7 +129,7 @@ Every merged option inherited that timing. Nuvio's phone app sends subtitle add-
 | Serve | background builds (started at play / subtitle listing), one builder across instances (store lease), keep-alive while waiting, never an unsynced guess as ★ | `src/smart/jobs.ts` |
 | Teach | in-player "⚠ … · replace" entries and the activity page: per-video bans of a timing reference or a subtitle | `src/smart/feedback.ts` |
 | Show | append-only activity log + Hebrew activity page (Smart-Hebrew style) | `src/smart/activity.ts`, `src/dashboard/` |
-| Share | 🎓 picks, builds, reports and the log across instances (Upstash / Turso / memory) | `src/store.ts` |
+| Share | builds, reports and the log across instances (Upstash / Turso / memory) | `src/store.ts` |
 
 Subtitle sources are Strelingo's: OpenSubtitles via Stremio's v3 add-on (no key), Buta-no-subs for Japanese,
 optional Wyzie / SubSource keys.
@@ -137,8 +138,8 @@ optional Wyzie / SubSource keys.
 
 - `/configure`, `/<config>/configure` — install page; `<config>` is base64url JSON (old URI-encoded JSON links still work)
 - `/<config>/manifest.json`
-- `/<config>/stream/:type/:id.json` — 🎓 streams (when a stream add-on URL is configured)
-- `/<config>/play/:token` — signed; records the pick, 302 to the stream
+- `/<config>/stream/:type/:id.json` — always empty (for players holding an older manifest)
+- `/<config>/play/:token` — 🎓 links from earlier versions: signed; records the pick, 302 to the stream
 - `/<config>/subtitles/:type/:id[/:extra].json` — the entries (★, ↻, each language alone, ⚠ reports), all under the translation language; Nuvio shows the `id`, so it is the readable name
 - `/<config>/sub/:entry/:type/:id/:ctx/strelingo-<entry>.srt` — one entry (`star`, `alt`, `main`, `trans`, `bad_sync`, `bad_trans`, `bad_main`); `/<config>/dual/...` links from 1.0 still work
 - `/` and `/status` — everyone's activity (locked by `ADMIN_PASSWORD` when set); `/api/status`, `/api/activity`, `/api/login`, `/api/feedback`, `/api/feedback/undo`
@@ -157,7 +158,7 @@ npm run embed        # after editing src/dashboard/page.html (regenerates page.t
 
 - **Vercel**: import the repo (`vercel.json` routes everything to `src/index.ts` via `@vercel/node`) and connect a
   shared store — Upstash Redis from Vercel's Storage tab (`UPSTASH_REDIS_REST_*` / `KV_REST_API_*` are set for you)
-  or Turso (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`). Requests may land on different instances, so 🎓 picks,
+  or Turso (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`). Requests may land on different instances, so
   finished builds and history live there; builds outlive their response through `waitUntil`; the `/play` signing
   key is derived from the store token unless `SECRET` is set. Check `/health`: `sharedState` must not be `memory`.
   `src/index.ts` exports `config = { maxDuration: 60 }` so a subtitle request may wait for its build. Set
