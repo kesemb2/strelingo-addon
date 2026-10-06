@@ -1,23 +1,18 @@
 services:
   strelingo:
     build: .
-    container_name: strelingo-addon
+    container_name: strelingo-smart
     restart: unless-stopped
     ports:
       - "7000:7000"
+    environment:
+      # Public address the player reaches the add-on at (needed behind a reverse proxy).
+      - EXTERNAL_URL=${EXTERNAL_URL:-}
+      # Signs the 🎓 /play links. Set a long random string, or one is generated into /data.
+      - SECRET=${SECRET:-}
+      - ADDON_NAME=${ADDON_NAME:-}
+    volumes:
+      - strelingo_data:/data
 
-    # See .env for configurable settings
-    env_file:
-      - .env
-
-    # If you use local file storage (Option 3) and want to store the cached subtitles on your
-    # host instead of inside the container, uncomment the next two lines:
-    # volumes:
-    #   - ./data:/app/subtitles
-
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:7000/manifest.json"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+volumes:
+  strelingo_data:

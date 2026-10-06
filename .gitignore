@@ -37,3 +37,5 @@ test/output/
 
 cl_codebase
 temp
+# Generated signing secret (DATA_DIR)
+/data/

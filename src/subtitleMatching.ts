@@ -235,10 +235,19 @@ function formatMsToSrtTime(ms: number): string {
     return `${pad(hours, 2)}:${pad(minutes, 2)}:${pad(seconds, 2)},${pad(milliseconds, 3)}`;
 }
 
+export interface MergeOptions {
+    /**
+     * Estimate and apply the trans→main time alignment (default). Off when
+     * both tracks were already synced to the same reference timeline.
+     */
+    align?: boolean;
+}
+
 export function mergeSubtitlesByTime<T extends SubtitleCue>(
     mainSubs: T[],
     transSubs: T[],
-    mergeThresholdMs = 500
+    mergeThresholdMs = 500,
+    options: MergeOptions = {}
 ): T[] {
     const mainTimed = buildTimedCues(mainSubs);
     const rawTransTimed = buildTimedCues(transSubs);
@@ -247,7 +256,7 @@ export function mergeSubtitlesByTime<T extends SubtitleCue>(
     // demonstrably matches more cues than the untouched timeline — a wrong
     // estimate must never make an already-synced pair worse.
     let transTimed = rawTransTimed;
-    const anchors = estimateAlignmentAnchors(mainTimed, rawTransTimed);
+    const anchors = options.align === false ? [] : estimateAlignmentAnchors(mainTimed, rawTransTimed);
     if (anchors.length > 0) {
         const aligned = alignTransCues(rawTransTimed, anchors);
         if (aligned !== rawTransTimed && isBetterAlignment(

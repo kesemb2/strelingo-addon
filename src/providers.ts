@@ -1,4 +1,4 @@
-import { normalizeLanguageCode } from './encoding';
+import { normalizeLanguageCode } from './encoding.js';
 
 // ---------------------------------------------------------------------------
 // Optional, API-key-gated subtitle providers (Wyzie, SubSource).
