@@ -11,6 +11,8 @@
 //
 // Values are strings with a TTL; large ones are gzipped. Store failures are
 // logged and treated as a miss: the add-on degrades to rebuilding, never fails.
+// Besides keys: a lease (set-if-absent, so one instance builds while the
+// others wait for its result) and append-only lists (the activity log).
 
 import { gunzipSync, gzipSync } from 'node:zlib';
 
@@ -18,6 +20,12 @@ export interface SharedStore {
     kind: 'upstash' | 'turso' | 'memory';
     get(key: string): Promise<string | null>;
     set(key: string, value: string, ttlSec: number): Promise<void>;
+    /** Sets the key only if it is absent (or expired); true when this call set it. */
+    setIfAbsent(key: string, value: string, ttlSec: number): Promise<boolean>;
+    /** Adds to the front of a list, keeping the newest `max` entries. */
+    append(list: string, value: string, max: number, ttlSec: number): Promise<void>;
+    /** Newest first. */
+    list(list: string, limit: number): Promise<string[]>;
 }
 
 class MemoryStore implements SharedStore {
@@ -38,6 +46,25 @@ class MemoryStore implements SharedStore {
         this.map.set(key, { value, expires: Date.now() + ttlSec * 1000 });
         if (this.map.size > 5000) this.map.delete(this.map.keys().next().value!);
     }
+
+    async setIfAbsent(key: string, value: string, ttlSec: number): Promise<boolean> {
+        if ((await this.get(key)) !== null) return false;
+        await this.set(key, value, ttlSec);
+        return true;
+    }
+
+    private readonly lists = new Map<string, string[]>();
+
+    async append(list: string, value: string, max: number): Promise<void> {
+        const items = this.lists.get(list) || [];
+        items.unshift(value);
+        if (items.length > max) items.length = max;
+        this.lists.set(list, items);
+    }
+
+    async list(list: string, limit: number): Promise<string[]> {
+        return (this.lists.get(list) || []).slice(0, limit);
+    }
 }
 
 class UpstashStore implements SharedStore {
@@ -57,6 +84,20 @@ class UpstashStore implements SharedStore {
         return data.result;
     }
 
+    private async pipeline(commands: Array<Array<string | number>>): Promise<unknown[]> {
+        const res = await fetch(`${this.url.replace(/\/+$/, '')}/pipeline`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${this.token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify(commands),
+            signal: AbortSignal.timeout(6000)
+        });
+        const data: any = await res.json().catch(() => null);
+        if (!res.ok || !Array.isArray(data)) throw new Error(`Upstash ${res.status}: ${data?.error || 'pipeline failed'}`);
+        const failed = data.find((r: any) => r?.error);
+        if (failed) throw new Error(`Upstash: ${failed.error}`);
+        return data.map((r: any) => r?.result);
+    }
+
     async get(key: string): Promise<string | null> {
         const v = await this.command(['GET', key]);
         return typeof v === 'string' ? v : null;
@@ -65,9 +106,26 @@ class UpstashStore implements SharedStore {
     async set(key: string, value: string, ttlSec: number): Promise<void> {
         await this.command(['SET', key, value, 'EX', Math.max(1, Math.round(ttlSec))]);
     }
+
+    async setIfAbsent(key: string, value: string, ttlSec: number): Promise<boolean> {
+        return (await this.command(['SET', key, value, 'NX', 'EX', Math.max(1, Math.round(ttlSec))])) === 'OK';
+    }
+
+    async append(list: string, value: string, max: number, ttlSec: number): Promise<void> {
+        await this.pipeline([
+            ['LPUSH', list, value],
+            ['LTRIM', list, 0, max - 1],
+            ['EXPIRE', list, Math.max(1, Math.round(ttlSec))]
+        ]);
+    }
+
+    async list(list: string, limit: number): Promise<string[]> {
+        const v = await this.command(['LRANGE', list, 0, limit - 1]);
+        return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : [];
+    }
 }
 
-type HranaValue = { type: 'text'; value: string } | { type: 'float'; value: number } | { type: 'null' };
+type HranaValue = { type: 'text'; value: string } | { type: 'float'; value: number } | { type: 'integer'; value: string } | { type: 'null' };
 
 class TursoStore implements SharedStore {
     kind = 'turso' as const;
@@ -81,9 +139,11 @@ class TursoStore implements SharedStore {
         this.endpoint = `${url}/v2/pipeline`;
     }
 
-    private async execute(sql: string, args: Array<string | number> = []): Promise<Array<Array<{ type: string; value?: unknown }>>> {
+    private async execute(sql: string, args: Array<string | number> = []): Promise<{ rows: Array<Array<{ type: string; value?: unknown }>>; affected: number }> {
+        // Whole numbers go as integers: SQLite refuses a REAL in LIMIT/OFFSET.
         const encode = (a: string | number): HranaValue =>
-            typeof a === 'number' ? { type: 'float', value: a } : { type: 'text', value: a };
+            typeof a !== 'number' ? { type: 'text', value: a }
+                : Number.isSafeInteger(a) ? { type: 'integer', value: String(a) } : { type: 'float', value: a };
         const res = await fetch(this.endpoint, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) },
@@ -94,13 +154,16 @@ class TursoStore implements SharedStore {
         const data: any = await res.json();
         const first = data?.results?.[0];
         if (first?.type !== 'ok') throw new Error(`Turso: ${first?.error?.message || 'unknown error'}`);
-        return first.response?.result?.rows || [];
+        const result = first.response?.result || {};
+        return { rows: result.rows || [], affected: Number(result.affected_row_count) || 0 };
     }
 
     private ensure(): Promise<void> {
-        this.ready ??= this.execute(
-            'CREATE TABLE IF NOT EXISTS strelingo_kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires REAL NOT NULL)'
-        ).then(() => undefined).catch(e => {
+        this.ready ??= (async () => {
+            await this.execute('CREATE TABLE IF NOT EXISTS strelingo_kv (key TEXT PRIMARY KEY, value TEXT NOT NULL, expires REAL NOT NULL)');
+            await this.execute('CREATE TABLE IF NOT EXISTS strelingo_log (id INTEGER PRIMARY KEY AUTOINCREMENT, list TEXT NOT NULL, value TEXT NOT NULL, expires REAL NOT NULL)');
+            await this.execute('CREATE INDEX IF NOT EXISTS strelingo_log_list ON strelingo_log (list, id)');
+        })().catch(e => {
             this.ready = null;
             throw e;
         });
@@ -109,7 +172,7 @@ class TursoStore implements SharedStore {
 
     async get(key: string): Promise<string | null> {
         await this.ensure();
-        const rows = await this.execute('SELECT value FROM strelingo_kv WHERE key = ? AND expires > ?', [key, Date.now() / 1000]);
+        const { rows } = await this.execute('SELECT value FROM strelingo_kv WHERE key = ? AND expires > ?', [key, Date.now() / 1000]);
         const cell = rows[0]?.[0];
         return cell && typeof cell.value === 'string' ? cell.value : null;
     }
@@ -125,6 +188,39 @@ class TursoStore implements SharedStore {
         if (++this.writes % 50 === 1) {
             await this.execute('DELETE FROM strelingo_kv WHERE expires < ?', [now]).catch(() => undefined);
         }
+    }
+
+    async setIfAbsent(key: string, value: string, ttlSec: number): Promise<boolean> {
+        await this.ensure();
+        const now = Date.now() / 1000;
+        const { affected } = await this.execute(
+            'INSERT INTO strelingo_kv (key, value, expires) VALUES (?, ?, ?) '
+            + 'ON CONFLICT(key) DO UPDATE SET value = excluded.value, expires = excluded.expires WHERE strelingo_kv.expires <= ?',
+            [key, value, now + ttlSec, now]
+        );
+        return affected > 0;
+    }
+
+    async append(list: string, value: string, max: number, ttlSec: number): Promise<void> {
+        await this.ensure();
+        const now = Date.now() / 1000;
+        await this.execute('INSERT INTO strelingo_log (list, value, expires) VALUES (?, ?, ?)', [list, value, now + ttlSec]);
+        if (++this.writes % 20 === 1) {
+            await this.execute(
+                'DELETE FROM strelingo_log WHERE list = ? AND (expires < ? OR id <= '
+                + '(SELECT id FROM strelingo_log WHERE list = ? ORDER BY id DESC LIMIT 1 OFFSET ?))',
+                [list, now, list, max]
+            ).catch(() => undefined);
+        }
+    }
+
+    async list(list: string, limit: number): Promise<string[]> {
+        await this.ensure();
+        const { rows } = await this.execute(
+            'SELECT value FROM strelingo_log WHERE list = ? AND expires > ? ORDER BY id DESC LIMIT ?',
+            [list, Date.now() / 1000, limit]
+        );
+        return rows.map(r => r[0]?.value).filter((v): v is string => typeof v === 'string');
     }
 }
 
@@ -173,5 +269,41 @@ export async function setJson(key: string, value: unknown, ttlSec: number, to: S
         await to.set(key, raw, ttlSec);
     } catch (e: any) {
         console.warn(`[store] write ${key.split(':')[0]} failed: ${e.message}`);
+    }
+}
+
+/** True when this call took the lease; a store failure counts as taken (build anyway). */
+export async function takeLease(key: string, ttlSec: number, to: SharedStore = getStore()): Promise<boolean> {
+    try {
+        return await to.setIfAbsent(key, String(Date.now()), ttlSec);
+    } catch (e: any) {
+        console.warn(`[store] lease ${key.split(':')[0]} failed: ${e.message}`);
+        return true;
+    }
+}
+
+export async function appendJson(list: string, value: unknown, max: number, ttlSec: number, to: SharedStore = getStore()): Promise<void> {
+    try {
+        let raw = JSON.stringify(value);
+        if (raw.length > GZIP_OVER) raw = GZIP_PREFIX + gzipSync(raw).toString('base64');
+        await to.append(list, raw, max, ttlSec);
+    } catch (e: any) {
+        console.warn(`[store] append ${list.split(':')[0]} failed: ${e.message}`);
+    }
+}
+
+export async function listJson<T>(list: string, limit: number, from: SharedStore = getStore()): Promise<T[]> {
+    try {
+        const out: T[] = [];
+        for (let raw of await from.list(list, limit)) {
+            try {
+                if (raw.startsWith(GZIP_PREFIX)) raw = gunzipSync(Buffer.from(raw.slice(GZIP_PREFIX.length), 'base64')).toString('utf8');
+                out.push(JSON.parse(raw) as T);
+            } catch { /* skip a damaged entry */ }
+        }
+        return out;
+    } catch (e: any) {
+        console.warn(`[store] list ${list.split(':')[0]} failed: ${e.message}`);
+        return [];
     }
 }

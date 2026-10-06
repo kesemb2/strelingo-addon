@@ -338,16 +338,18 @@ export function loadSubtitle(c: Candidate, fetchImpl: typeof fetch = fetch): Pro
             const text = await fetchSubtitleText(c, fetchImpl);
             const cues = text ? parseSrt(text) : null;
             if (!cues || cues.length < 5) return null;
-            const spans: Span[] = [];
-            const kept: SubtitleCue[] = [];
+            const timed: Array<{ cue: SubtitleCue; span: Span }> = [];
             for (const cue of cues) {
                 const start = parseSrtTimeToMs(cue.startTime);
                 const end = parseSrtTimeToMs(cue.endTime);
                 if (start === null || end === null || end <= start) continue;
-                kept.push(cue);
-                spans.push({ start, end });
+                timed.push({ cue, span: { start, end } });
             }
-            return kept.length >= 5 ? { candidate: c, cues: kept, spans } : null;
+            // Some uploads list lines out of order; the aligner reads them in time order.
+            timed.sort((a, b) => a.span.start - b.span.start);
+            return timed.length >= 5
+                ? { candidate: c, cues: timed.map(t => t.cue), spans: timed.map(t => t.span) }
+                : null;
         } catch (e: any) {
             console.warn(`[sources] ${c.source} ${c.id} failed: ${e.message}`);
             return null;

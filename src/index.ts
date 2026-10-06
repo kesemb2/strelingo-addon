@@ -3,22 +3,30 @@ import { Hono, type Context } from 'hono';
 import { cors } from 'hono/cors';
 
 import landingTemplate, { type Manifest } from './landingTemplate.js';
-import { browserLanguageMap, languageName, languageOptions } from './languages.js';
+import { browserLanguageMap, languageOptions } from './languages.js';
 import { resolveKitsuToImdb } from './kitsuMapping.js';
 import { OPTIONAL_PROVIDERS, WYZIE_SOURCES } from './providers.js';
 import { encodeConfig, parseUserConfig, signingSource, signPayload, verifyPayload, type UserConfig } from './config.js';
 import { fetchUpstreamStreams, normName, type UpstreamStream } from './file/upstream.js';
-import { latestPlay, playsShared, recordPlay } from './smart/plays.js';
-import { keepAlive, recentBuilds, startJob, waitForJob } from './smart/jobs.js';
+import { latestPlay, recordPlay, usesPlayLinks } from './smart/plays.js';
+import { keepAlive, peekResult, startJob, waitForJob, type JobContext } from './smart/jobs.js';
+import { logEvent, type ActivityEvent } from './smart/activity.js';
+import { REPORT_KINDS, applyReport, bansFor, recordServed, type ReportKind } from './smart/feedback.js';
 import { getStore } from './store.js';
-import type { FileHint, SmartRequest } from './smart/pipeline.js';
+import type { Bans, BuildOutput, FileHint, SmartRequest } from './smart/pipeline.js';
+import { hebrewLanguageName } from './languages.js';
+import { registerDashboard } from './dashboard/routes.js';
 
 // ---------------------------------------------------------------------------
 // Manifest
 // ---------------------------------------------------------------------------
 
 const ADDON_ID = 'com.kesemb2.strelingo.smart';
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
+
+// Vercel: let a subtitle request wait for its build (and the build finish
+// after the response) instead of the 10 s default of older projects.
+export const config = { maxDuration: 60 };
 const DEFAULT_NAME = 'Strelingo Smart';
 
 function addonName(): string {
@@ -165,12 +173,21 @@ function parseExtra(extra: string | undefined): { filename?: string; size?: numb
     return out;
 }
 
-function smartRequest(config: UserConfig, type: string, ids: VideoIds, file: FileHint, variant: 1 | 2): SmartRequest {
+function smartRequest(config: UserConfig, type: string, ids: VideoIds, file: FileHint, variant: 1 | 2, bans?: Bans): SmartRequest {
     return {
         type, videoId: ids.videoId, imdbId: ids.imdbId, season: ids.season, episode: ids.episode, butaId: ids.butaId,
         mainLang: config.mainLang, transLang: config.transLang, optional: config.optional,
-        upstreamUrl: config.streamAddonUrl, file, variant
+        upstreamUrl: config.streamAddonUrl, file, variant, bans
     };
+}
+
+function jobContext(config: UserConfig): JobContext {
+    return { userKey: config.userKey, pair: `${config.mainLang}+${config.transLang}` };
+}
+
+/** What the log keeps about a file: never its URL (debrid links carry tokens). */
+function fileSummary(file: FileHint): ActivityEvent['file'] {
+    return { via: file.via, filename: file.filename, size: file.size };
 }
 
 /** What the subtitle URL remembers about the file (never the stream URL itself). */
@@ -228,7 +245,10 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 // player asks for subtitles: give it a short chance before building blind.
 async function resolveFileWaiting(config: UserConfig, videoId: string, said: FileCtx, waitMs: number): Promise<FileHint> {
     let file = await resolveFile(config, videoId, said);
-    if (!config.streamAddonUrl || file.via === 'play') return file;
+    // Nothing to wait for when the player named the file itself, or when
+    // this user never plays 🎓 streams.
+    if (!config.streamAddonUrl || file.via === 'play' || said.f || said.s) return file;
+    if (!(await usesPlayLinks(config.userKey))) return file;
     const until = Date.now() + waitMs;
     while (Date.now() < until) {
         await sleep(250);
@@ -238,17 +258,24 @@ async function resolveFileWaiting(config: UserConfig, videoId: string, said: Fil
     return file;
 }
 
-const NOTE_MESSAGES: Array<[string, string]> = [
-    ['no_main_language_subtitles', 'no subtitles in the main language were found for this title'],
-    ['main_language_downloads_failed', 'the main-language subtitles could not be downloaded right now'],
-    ['crash', 'something went wrong while preparing the subtitles']
-];
+// A message as a subtitle, repeated through the whole film: the viewer may
+// have started it anywhere.
+function messageSrt(text: string): string {
+    const p = (n: number, w: number) => String(n).padStart(w, '0');
+    const ts = (ms: number) => `${p(Math.floor(ms / 3600000), 2)}:${p(Math.floor(ms / 60000) % 60, 2)}:${p(Math.floor(ms / 1000) % 60, 2)},${p(ms % 1000, 3)}`;
+    const out: string[] = [];
+    for (let i = 0, t = 1_000; t < 4 * 3600_000; i++, t += 30_000) {
+        out.push(`${i + 1}\n${ts(t)} --> ${ts(t + 8_000)}\nStrelingo: ${text}\n`);
+    }
+    return out.join('\n');
+}
 
-function explainSrt(notes: string[], mainLang: string): string {
-    const hit = NOTE_MESSAGES.find(([k]) => notes.some(n => n.startsWith(k)));
-    const reason = hit ? hit[1].replace('the main language', languageName(mainLang)).replace('main-language', languageName(mainLang))
-        : 'the subtitles are not ready yet — choose this subtitle again in a few seconds';
-    return `1\n00:00:01,000 --> 00:00:12,000\nStrelingo: ${reason}.\n`;
+function explainText(notes: string[], config: UserConfig): string {
+    const main = hebrewLanguageName(config.mainLang);
+    if (notes.includes('no_main_language_subtitles')) return `לא נמצאו כתוביות ב${main} לסרט הזה.`;
+    if (notes.includes('main_language_downloads_failed')) return `לא הצלחתי להוריד כתוביות ב${main} כרגע. נסו שוב בעוד דקה.`;
+    if (notes.some(n => n.startsWith('crash'))) return 'משהו השתבש בהכנת הכתוביות. הפרטים בדף הפעילות.';
+    return 'הכתוביות עדיין בהכנה. בחרו את האפשרות שוב בעוד כמה שניות.';
 }
 
 // ---------------------------------------------------------------------------
@@ -273,8 +300,6 @@ app.get('/manifest.json', c => {
     manifest.config = toStremioSafeConfig(manifest.config);
     return c.json(manifest);
 });
-
-app.get('/', c => c.redirect('/configure'));
 
 app.get('/configure', c => {
     const manifest = withUserDefaults(getManifest(null), null);
@@ -351,13 +376,49 @@ app.on(['GET', 'HEAD'], '/:config/play/:token', async c => {
         const ids = parseVideoId(payload.t, payload.v);
         if (ids) {
             console.log(`[play] ${payload.v} ${payload.f || ''}`);
-            startJob(smartRequest(config, payload.t, ids, file, 1), config.userKey);
+            const jctx = jobContext(config);
+            keepAlive((async () => {
+                const bans = await bansFor(config.userKey, ids.videoId);
+                startJob(smartRequest(config, payload.t, ids, file, 1, bans), jctx);
+                await logEvent({ kind: 'play', user: config.userKey, pair: jctx.pair, type: payload.t, videoId: ids.videoId, file: fileSummary(file) });
+            })());
         }
     }
     return c.redirect(payload.u, 302);
 });
 
 // --- Subtitles -------------------------------------------------------------
+//
+// Smart-Hebrew-Subtitles style: one ★ entry that is always the best the add-on
+// knows, alternatives that say what they are, and entries that teach it when
+// something is wrong. Nuvio shows each entry's id under the language, so the
+// id is the readable name; everything is listed under the translation
+// language (the viewer's own, near the top of the list).
+
+type EntryKind = 'star' | 'alt' | 'main' | 'trans' | ReportKind;
+const ENTRY_KINDS: readonly EntryKind[] = ['star', 'alt', 'main', 'trans', ...REPORT_KINDS];
+const isReport = (e: EntryKind): e is ReportKind => (REPORT_KINDS as readonly string[]).includes(e);
+
+const TIER_BASIS: Record<string, string> = {
+    file: 'מסונכרן לקובץ',
+    hash: 'מסונכרן לקובץ (טביעת אצבע)',
+    consensus: 'לפי רוב הכתוביות',
+    guess: 'תזמון משוער'
+};
+
+function entryLabels(config: UserConfig, basis: string): Record<EntryKind, string> {
+    const main = hebrewLanguageName(config.mainLang);
+    const trans = hebrewLanguageName(config.transLang);
+    return {
+        star: `★ ${main}+${trans} · ${basis}`,
+        alt: `↻ ${main}+${trans} · חלופה`,
+        main: `${main} בלבד · מסונכרן`,
+        trans: `${trans} בלבד · מסונכרן`,
+        bad_sync: '⚠ הסנכרון לא טוב · החלף',
+        bad_trans: `⚠ ה${trans} לא טובה · החלף`,
+        bad_main: `⚠ ה${main} לא טובה · החלף`
+    };
+}
 
 const PLAY_GRACE_LIST_MS = 2_500;
 
@@ -374,101 +435,140 @@ async function handleSubtitles(c: Context) {
 
     const said = parseExtra(extra);
     const ctx: FileCtx = { f: said.filename, s: said.size, h: said.hash };
-    const file = await resolveFile(config, ids.videoId, ctx);
+    const [file, bans] = await Promise.all([resolveFile(config, ids.videoId, ctx), bansFor(config.userKey, ids.videoId)]);
     const knowsFile = Boolean(file.url || file.filename || file.size || file.hash);
+    const jctx = jobContext(config);
 
-    // Start preparing now so the subtitle is ready when it's picked.
+    // Start preparing now so the subtitle is ready when it's picked; the
+    // alternative right after, on the same downloads.
     const kick = async () => {
         const f = file.via === 'play' ? file : await resolveFileWaiting(config, ids.videoId, ctx, PLAY_GRACE_LIST_MS);
-        startJob(smartRequest(config, type, ids, f, 1), config.userKey);
-        if (!(f.url || f.filename || f.size || f.hash)) startJob(smartRequest(config, type, ids, f, 2), config.userKey);
+        const star = startJob(smartRequest(config, type, ids, f, 1, bans), jctx);
+        await star.done;
+        await startJob(smartRequest(config, type, ids, f, 2, bans), jctx).done;
     };
     keepAlive(kick());
+
+    // What ★ is based on: the finished build if there is one, else what is
+    // known about the file so far.
+    const ready = await peekResult(smartRequest(config, type, ids, file, 1, bans));
+    const basis = ready?.srt ? TIER_BASIS[ready.info.tier] || 'תזמון משוער'
+        : knowsFile ? 'לפי הקובץ' : 'תזמון משוער';
+    const labels = entryLabels(config, basis);
 
     const base = `${externalBase(c)}/${c.req.param('config')}`;
     const idSeg = encodeURIComponent(ids.videoId);
     const ctxSeg = encodeCtx(ctx);
-    const pair = `${config.mainLang.slice(0, 2).toUpperCase()}+${config.transLang.slice(0, 2).toUpperCase()}`;
-    const subtitles = [{
-        id: `strelingo-${ids.videoId}-1`,
-        url: `${base}/dual/1/${type}/${idSeg}/${ctxSeg}/strelingo.srt`,
-        lang: config.mainLang,
-        label: `${pair} ★`
-    }];
-    // Without anything about the file, the best guess can still be another
-    // release's timing: offer the runner-up timing too.
-    if (!knowsFile && !config.streamAddonUrl) {
-        subtitles.push({
-            id: `strelingo-${ids.videoId}-2`,
-            url: `${base}/dual/2/${type}/${idSeg}/${ctxSeg}/strelingo-alt.srt`,
-            lang: config.mainLang,
-            label: `${pair} ↻`
-        });
-    }
+    const subtitles = ENTRY_KINDS.map(kind => ({
+        id: labels[kind],
+        url: `${base}/sub/${kind}/${type}/${idSeg}/${ctxSeg}/strelingo-${kind}.srt`,
+        lang: config.transLang,
+        label: labels[kind]
+    }));
     console.log(`[subtitles] ${type} ${ids.videoId} ${config.mainLang}+${config.transLang} file=${file.via || 'unknown'}`);
+    keepAlive(logEvent({
+        kind: 'list', user: config.userKey, pair: jctx.pair, type, videoId: ids.videoId,
+        file: fileSummary(file), entries: subtitles.map(s => s.id), ok: Boolean(ready?.srt)
+    }));
     return c.json({ subtitles, cacheMaxAge: 0 }, 200, { 'Cache-Control': 'no-store' });
 }
 
 app.get('/:config/subtitles/:type/:id/:extra', handleSubtitles);
 app.get('/:config/subtitles/:type/:id', handleSubtitles);
 
-// The merged subtitle. If it isn't ready yet, keep the connection alive with
-// blank lines (SRT parsers skip them) instead of letting the player time out.
+// A subtitle entry. If the build isn't ready yet, keep the connection alive
+// with blank lines (SRT parsers skip them) instead of letting the player
+// time out; past the deadline, a message that says so (never an unsynced
+// guess dressed up as ★).
 const SRT_WAIT_MS = Number(process.env.SRT_WAIT_MS || 30_000);
 const FIRST_WAIT_MS = 7_000;
 const KEEPALIVE_MS = 4_000;
 const PLAY_GRACE_SRT_MS = 3_000;
 
-app.get('/:config/dual/:variant/:type/:id/:ctx/:name', async c => {
+function entryText(out: BuildOutput | null, entry: EntryKind, config: UserConfig): { text: string; ok: boolean } {
+    if (!out) return { text: messageSrt(explainText([], config)), ok: false };
+    if (!out.srt) return { text: messageSrt(explainText(out.info.notes, config)), ok: false };
+    if (entry === 'main') return { text: out.mainSrt || out.srt, ok: true };
+    if (entry === 'trans') {
+        return out.transSrt
+            ? { text: out.transSrt, ok: true }
+            : { text: messageSrt(`לא נמצאו כתוביות ב${hebrewLanguageName(config.transLang)} לסרט הזה.`), ok: false };
+    }
+    return { text: out.srt, ok: true };
+}
+
+async function serveEntry(c: Context, entry: EntryKind) {
     const config = parseUserConfig(c.req.param('config'));
-    const type = c.req.param('type');
-    const variant = c.req.param('variant') === '2' ? 2 : 1;
-    const ids = parseVideoId(type, c.req.param('id'));
+    const type = c.req.param('type') || 'movie';
+    const ids = parseVideoId(type, c.req.param('id') || '');
     if (!config || !ids) return c.text('invalid subtitle link', 400);
 
     const t0 = Date.now();
-    const file = await resolveFileWaiting(config, ids.videoId, decodeCtx(c.req.param('ctx')), PLAY_GRACE_SRT_MS);
-    const job = startJob(smartRequest(config, type, ids, file, variant), config.userKey);
+    const jctx = jobContext(config);
+    const file = await resolveFileWaiting(config, ids.videoId, decodeCtx(c.req.param('ctx') || '-'), PLAY_GRACE_SRT_MS);
+
+    // "⚠ ... · replace": learn from it, then serve the replacement right away.
+    if (isReport(entry)) {
+        const r = await applyReport(config.userKey, ids.videoId, entry, 'player');
+        console.log(`[report] ${ids.videoId} ${entry}: ${r.outcome}`);
+        keepAlive(logEvent({
+            kind: 'report', user: config.userKey, pair: jctx.pair, type, videoId: ids.videoId, entry,
+            file: fileSummary(file), report: { kind: entry, outcome: r.outcome, id: r.report?.id, bans: r.report?.bans }
+        }));
+    }
+    const bans = await bansFor(config.userKey, ids.videoId);
+    const job = startJob(smartRequest(config, type, ids, file, entry === 'alt' ? 2 : 1, bans), jctx);
     const headers = { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' };
+
+    const finish = (out: BuildOutput | null): string => {
+        const { text, ok } = entryText(out, entry, config);
+        const waitedMs = Date.now() - t0;
+        if (!ok) console.warn(`[srt] ${ids.videoId} ${entry}: nothing ready after ${waitedMs}ms`);
+        keepAlive((async () => {
+            if (ok && out) await recordServed(config.userKey, ids.videoId, entry, out.info);
+            await logEvent({
+                kind: 'serve', user: config.userKey, pair: jctx.pair, type, videoId: ids.videoId, entry,
+                variant: entry === 'alt' ? 2 : 1, ok, waitedMs, origin: job.origin,
+                file: fileSummary(file), info: out?.info, bans,
+                message: ok ? undefined : text.split('\n')[2]
+            });
+        })());
+        return text;
+    };
 
     // Most builds finish in a few seconds: answer plainly within the players'
     // read timeout (8–10 s) before falling back to keep-alive lines.
     const quick = await waitForJob(job, FIRST_WAIT_MS);
-    if (quick.final) {
-        const srt = quick.out?.srt ?? explainSrt(quick.out?.info.notes || [], config.mainLang);
-        return c.body(srt, 200, headers);
-    }
+    if (quick) return c.body(finish(quick), 200, headers);
 
     const encoder = new TextEncoder();
     const stream = new ReadableStream<Uint8Array>({
         async start(controller) {
             const deadline = t0 + SRT_WAIT_MS;
-            let result = quick;
-            while (!result.final && Date.now() < deadline) {
+            let result: BuildOutput | null = null;
+            while (!result && Date.now() < deadline) {
                 controller.enqueue(encoder.encode('\n'));
                 result = await waitForJob(job, Math.min(KEEPALIVE_MS, Math.max(0, deadline - Date.now())));
             }
-            const srt = result.out?.srt ?? explainSrt(result.out?.info.notes || [], config.mainLang);
-            if (!result.final) console.warn(`[srt] ${ids.videoId}: served stage "${result.out?.info.stage || 'none'}" after ${Date.now() - t0}ms`);
-            controller.enqueue(encoder.encode(srt));
+            controller.enqueue(encoder.encode(finish(result)));
             controller.close();
         }
     });
     return c.body(stream, 200, headers);
+}
+
+app.get('/:config/sub/:entry/:type/:id/:ctx/:name', c => {
+    const entry = c.req.param('entry') as EntryKind;
+    if (!ENTRY_KINDS.includes(entry)) return c.text('unknown subtitle entry', 404);
+    return serveEntry(c, entry);
 });
 
-// What happened with your recent subtitles: tier (file / hash / consensus),
-// which subtitles were picked, how they were fitted, and why not better.
-app.get('/:config/status', async c => {
-    const config = parseUserConfig(c.req.param('config'));
-    if (!config) return c.json({ error: 'invalid configuration' }, 400);
-    return c.json({
-        languages: `${config.mainLang}+${config.transLang}`,
-        streamAddon: Boolean(config.streamAddonUrl),
-        sharedState: playsShared() ? getStore().kind : 'memory (this server only)',
-        builds: await recentBuilds(config.userKey)
-    });
-});
+// Links handed out by version 1.0 (players may still hold them).
+app.get('/:config/dual/:variant/:type/:id/:ctx/:name', c => serveEntry(c, c.req.param('variant') === '2' ? 'alt' : 'star'));
+
+// --- Activity page ---------------------------------------------------------
+
+registerDashboard(app, VERSION);
 
 app.get('/:config', c => {
     const seg = c.req.param('config');

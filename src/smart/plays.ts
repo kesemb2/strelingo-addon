@@ -19,8 +19,18 @@ export async function recordPlay(userKey: string, videoId: string, file: FileHin
     if (!changed && Date.now() - prev!.at < REWRITE_AFTER_MS) return false;
     written.set(key, { url: file.url, at: Date.now() });
     if (written.size > 2000) written.delete(written.keys().next().value!);
-    await setJson(`play:${key}`, { ...file, at: Date.now() }, MAX_AGE_S);
+    await Promise.all([
+        setJson(`play:${key}`, { ...file, at: Date.now() }, MAX_AGE_S),
+        setJson(`plays:${userKey}`, Date.now(), USER_PLAYS_S)
+    ]);
     return changed;
+}
+
+const USER_PLAYS_S = 14 * 24 * 3600;
+
+/** Whether this user plays 🎓 streams at all (lately): only then is a late play worth waiting for. */
+export async function usesPlayLinks(userKey: string): Promise<boolean> {
+    return Boolean(await getJson<number>(`plays:${userKey}`));
 }
 
 export async function latestPlay(userKey: string, videoId: string): Promise<{ file: FileHint; at: number } | null> {

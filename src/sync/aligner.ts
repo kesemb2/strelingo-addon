@@ -526,7 +526,7 @@ export function alignToReference(ref: Span[], incSpans: Span[], options: AlignOp
     // is itself well clear of chance, since splits can fit noise a little.
     const scoreShare = score / inc.totalMs;
     const finalContrast = fit.background < 1 ? (scoreShare - fit.background) / (1 - fit.background) : 0;
-    const contrast = fit.contrast >= MIN_GLOBAL_CONTRAST ? Math.max(fit.contrast, finalContrast) : fit.contrast;
+    const contrast = Math.min(1, fit.contrast >= MIN_GLOBAL_CONTRAST ? Math.max(fit.contrast, finalContrast) : fit.contrast);
 
     return {
         spans,

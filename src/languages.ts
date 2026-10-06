@@ -50,3 +50,19 @@ export function parseLangCode(lang: string | undefined): string | undefined {
     const match = lang.match(/\[([^\]]+)\]$/);
     return match ? match[1] : lang;
 }
+
+// The subtitle entries and the activity page speak Hebrew (Smart-Hebrew style).
+const hebrewNames: Record<string, string> = {
+    'ara': 'ערבית', 'bul': 'בולגרית', 'cat': 'קטלאנית', 'chi': 'סינית', 'zht': 'סינית', 'zhc': 'קנטונזית',
+    'cze': 'צ\'כית', 'dan': 'דנית', 'dut': 'הולנדית', 'ell': 'יוונית', 'eng': 'אנגלית', 'fin': 'פינית',
+    'fre': 'צרפתית', 'ger': 'גרמנית', 'heb': 'עברית', 'hin': 'הינדית', 'hrv': 'קרואטית', 'hun': 'הונגרית',
+    'ind': 'אינדונזית', 'ita': 'איטלקית', 'jpn': 'יפנית', 'kor': 'קוריאנית', 'nor': 'נורווגית', 'per': 'פרסית',
+    'pob': 'פורטוגזית', 'pol': 'פולנית', 'por': 'פורטוגזית', 'rum': 'רומנית', 'rus': 'רוסית', 'scc': 'סרבית',
+    'slo': 'סלובקית', 'slv': 'סלובנית', 'spa': 'ספרדית', 'spl': 'ספרדית', 'spn': 'ספרדית', 'swe': 'שוודית',
+    'tha': 'תאית', 'tur': 'טורקית', 'ukr': 'אוקראינית', 'vie': 'וייטנאמית', 'ice': 'איסלנדית', 'est': 'אסטונית',
+    'lav': 'לטבית', 'lit': 'ליטאית', 'geo': 'גאורגית', 'arm': 'ארמנית', 'alb': 'אלבנית', 'mac': 'מקדונית'
+};
+
+export function hebrewLanguageName(code: string | undefined): string {
+    return (code && hebrewNames[code]) || languageName(code);
+}

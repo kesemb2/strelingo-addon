@@ -62,6 +62,8 @@ export interface WorldOptions {
     /** OpenSubtitles entries, in the order the service returns them. */
     subtitles?: Array<{ id: string; lang: 'fre' | 'eng'; spans: TrueSpan[]; m?: string }>;
     embedded?: boolean;
+    /** The embedded track's timings (default: the speech itself, lightly jittered). */
+    embeddedSpans?: TrueSpan[];
 }
 
 export function makeWorld(build: (speech: TrueSpan[]) => WorldOptions): World {
@@ -69,7 +71,7 @@ export function makeWorld(build: (speech: TrueSpan[]) => WorldOptions): World {
     const opts = build(speech);
     const n = ++worldCount;
     const fileUrl = `https://debrid.example/w${n}/${FILENAME}`;
-    const embedded = deriveSubtitle(speech, { seed: 900, jitterMs: 60, dropShare: 0.05 });
+    const embedded = opts.embeddedSpans || deriveSubtitle(speech, { seed: 900, jitterMs: 60, dropShare: 0.05 });
     const mkv = buildMkv(opts.embedded === false
         ? []
         : [{ number: 2, lang: 'fre', cues: embedded.map(s => [s.start, s.end - s.start] as [number, number]) }], 300_000);

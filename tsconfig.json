@@ -23,7 +23,8 @@
     "test/server.test.ts",
     "test/store.test.ts",
     "test/vercel.test.ts",
-    "test/fakeStores.ts"
+    "test/fakeStores.ts",
+    "test/dashboard.test.ts"
   ],
   "exclude": [
     "node_modules",
