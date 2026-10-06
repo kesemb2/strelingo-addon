@@ -6,13 +6,26 @@
     "esModuleInterop": true,
     "strict": true,
     "skipLibCheck": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "declaration": true,
     "resolveJsonModule": true,
     "allowSyntheticDefaultImports": true,
-    "forceConsistentCasingInFileNames": true
+    "forceConsistentCasingInFileNames": true,
+    "types": [
+      "node"
+    ],
+    "noEmit": true,
+    "allowImportingTsExtensions": true
   },
-  "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
-} 
+  "include": [
+    "src/**/*.ts",
+    "test/aligner.test.ts",
+    "test/file.test.ts",
+    "test/synthetic.ts",
+    "test/fakeFiles.ts",
+    "test/pipeline.test.ts",
+    "test/server.test.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}

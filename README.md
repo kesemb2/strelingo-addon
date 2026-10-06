@@ -1,147 +1,120 @@
-# Strelingo Stremio Addon
+# Strelingo Smart — כתוביות בשתי שפות, מסונכרנות לקובץ שאתם מנגנים
 
-This Stremio addon fetches subtitles for movies and series from OpenSubtitles and merges two language tracks into a single subtitle file. This is particularly useful for language learners who want to see subtitles in both their native language and the language they are learning simultaneously.
+תוסף ל-Stremio ול-Nuvio שמציג בו-זמנית שורה בשפת הסרט (למשל צרפתית) ושורה בשפה שלכם (למשל אנגלית),
+**מסונכרנות לקובץ הווידאו שמתנגן בפועל** — לא לקובץ כתוביות אקראי מראש הרשימה.
 
-![Ekran görüntüsü 2025-04-18 142351](https://github.com/user-attachments/assets/d2441e6c-82b7-4115-876d-1af0e419f6df)
+מבוסס על [Strelingo](https://github.com/Serkali-sudo/strelingo-addon) (מיזוג שתי השפות לקובץ אחד)
+ועל מה שנלמד ב-Smart-Hebrew-Subtitles (זיהוי הקובץ המתנגן, טביעת אצבע, תזמון מתוך ה-MKV, סנכרון שמתקן FPS וחיתוכים).
 
-## Deployment
+## למה זה לא עבד ב-Nuvio
 
-### Cloudflare Workers
-Deploy to Cloudflare Workers in one click:
+1. **Strelingo המקורי סנכרן את שתי השפות זו לזו, אבל אף אחת מהן לסרט.** הוא לקח את הכתובית הצרפתית הראשונה
+   ברשימה של OpenSubtitles כמו שהיא, והתאים אליה את האנגלית. אם הכתובית הצרפתית נוצרה לגרסה אחרת של הסרט —
+   ובסרטים צרפתיים זה נפוץ מאוד: גרסאות טלוויזיה/DVD של 25 פריימים לשנייה (PAL), שרצות 4% מהר יותר וצוברות
+   סטייה של כמה דקות עד סוף הסרט — **כל** האפשרויות שהוא הציע ירשו את אותו תזמון שגוי.
+2. **אפליקציית Nuvio לטלפון לא מוסרת לתוספי כתוביות שום מידע על הקובץ** — לא שם, לא גודל, לא טביעת אצבע
+   (בדקתי בקוד של Nuvio: הבקשה היא `/subtitles/movie/<id>.json` בלבד). Stremio ו-NuvioTV שולחים לפחות את שם הקובץ;
+   בטלפון — כלום. אז "הכתובית הראשונה ברשימה" הייתה ניחוש עיוור.
+3. בנוסף, Nuvio מציג כתובית של תוסף רק בתור "שפה (שם התוסף)", כך שארבע האפשרויות של Strelingo נראו זהות.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/Serkali-sudo/strelingo-addon)
+## איך זה עובד עכשיו
 
-### Vercel
-You can easily deploy this addon and host it yourself on Vercel by clicking the button below. The free hobby plan is more than enough for personal use. You may need to set up Vercel Blob storage.
+**שלב 1 — לזהות את הקובץ המתנגן.** אם הדבקתם בהגדרות את קישור ה-AIOStreams שלכם, התוסף מציג את אותם
+סטרימים מסומנים ב-🎓. כשמנגנים סטרים 🎓, הנגן עובר דרך התוסף לשבריר שנייה (הפניה, בלי להעביר וידאו),
+וכך התוסף יודע בדיוק איזה קובץ מתנגן — גם בטלפון. ב-Stremio/NuvioTV, שם הקובץ שהנגן שולח מספיק כדי למצוא אותו ב-AIOStreams.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/import/project?template=https://github.com/Serkali-sudo/strelingo-addon)
+**שלב 2 — ציר זמן אמיתי של הסרט**, מהטוב לפחות טוב:
+- **מתוך הקובץ עצמו**: תזמוני הכתוביות המוטמעות ב-MKV, נקראים מאינדקס הקובץ בכמה בקשות קטנות (בדרך כלל פחות ממגה, לא הסרט כולו).
+- **טביעת אצבע**: כתובית ש-OpenSubtitles מזהה כמותאמת בדיוק לקובץ הזה (ה-hash מחושב מ-2×64KB של הקובץ).
+- **קונצנזוס** (כשאין שום מידע על הקובץ): התזמון שרוב הכתוביות שהורדו מסכימות עליו, עם העדפה למהירות קולנוע על פני PAL.
 
-### Docker
-```bash
-docker compose up -d
-```
+**שלב 3 — סנכרון כל כתובית לציר הזה**: מנוע (בהשראת alass) שמוצא יחס FPS (PAL/NTSC), היסט קבוע, וחיתוכים
+(הפסקות פרסומות, סצנות שנוספו) — ופוסל כתובית של סרט/פרק אחר. נבחרות הצרפתית והאנגלית שמתאימות הכי טוב,
+ומתמזגות לקובץ אחד: השורה הצרפתית מודגשת, האנגלית בנטוי מתחתיה.
 
-## Demo Live Addon Url
-You can either add the Stremio addon by copying this and use add addon in stremio:
- ```bash 
- https://strelingo.pronouncetube.com/manifest.json
- ```
-or visit the addon page here:  
-[https://strelingo.pronouncetube.com](https://strelingo.pronouncetube.com).
+הכתוביות מוכנות ברקע מהרגע שמתחילים לנגן, כך שבדרך כלל הן מוכנות עוד לפני שבוחרים אותן.
 
-## Providers
+## התקנה (פעם אחת)
 
-### Default (no setup required)
-* OpenSubtitles.
-* [Buta no subs Stremio addon](https://github.com/Pigamer37/buta-no-subs-stremio-addon) for better japanese subtitles (Implemented by @Pigamer37).
+1. **פריסה**: הכי פשוט — [Render](https://render.com) → New → Blueprint → הריפו הזה (הקובץ `render.yaml` עושה הכל, חינם).
+   או בכל שרת: `docker compose up -d`. אפשר גם להריץ לידכם: `npm install && npm start`.
+   בחינם ב-Render השרת "נרדם" אחרי 15 דקות — כדאי pinger חינמי (למשל UptimeRobot) על `https://<השרת>/health` כל 10 דקות,
+   כמו שעשינו ב-Smart-Hebrew.
+2. פותחים את כתובת השרת בדפדפן → דף ההגדרות:
+   - שפה ראשית: **French**, שפת תרגום: **English** (אלה ברירות המחדל).
+   - **מדביקים את קישור ה-AIOStreams** (ה-manifest, בדיוק כמו שהותקן ב-Nuvio). זה מה שנותן סנכרון מדויק.
+3. **Copy Link** → ב-Nuvio: Settings → Addons → מדביקים את הקישור. (ב-Stremio אפשר ללחוץ Install.)
 
-### Optional (bring your own API key)
-Extra subtitle sources you can enable on the addon install page. They live in a collapsed **"Optional Providers"** section and stay **disabled unless you paste in their API key** — your two defaults above are never affected. Each field on the config page shows the provider's free usage limits and a **"Get key"** link.
+## שימוש
 
-* **[Wyzie Subs](https://sub.wyzie.io)** — an aggregator that itself pulls from many upstream sources (OpenSubtitles, SubDL, Subf2m, Podnapisi, Gestdown, YIFY, and several anime sources, plus on-demand AI translation). A set of checkboxes lets you choose exactly which of these sources to query. A free key covers the free sources; a Pro key unlocks the rest. Get a free key at [store.wyzie.io/redeem](https://store.wyzie.io/redeem).
-* **[SubSource](https://subsource.net)** — large community subtitle catalog (successor to the Subscene archive). Downloads arrive as ZIP archives and are extracted automatically. Limits: 60 requests/min, 1,800/hour, 7,200/day.
+1. בוחרים סרט → **בוחרים סטרים שמתחיל ב-🎓** (באותה איכות שהייתם בוחרים ב-AIOStreams).
+2. בנגן → כתוביות → **French (Strelingo Smart …)**.
 
-**Providers mode.** A toggle controls when the optional providers are queried:
-* **Fallback** *(default)* — only query your provider keys when OpenSubtitles + Buta-no-subs return nothing for your chosen main/translation language. This conserves your API credit.
-* **Parallel** — always query enabled providers alongside the defaults and pool all results, for the widest coverage (uses more API credit).
+אם בחרתם סטרים רגיל (לא 🎓) בטלפון, התוסף לא יודע מה מתנגן ויבחר את התזמון הנפוץ — בדרך כלל טוב, אבל בלי
+ערובה. ההבדל יהיה לכל היותר היסט קבוע, וכפתור ה-delay של הכתוביות ב-Nuvio מתקן אותו. כשאין קישור AIOStreams
+בהגדרות, מוצעת גם אפשרות שנייה (↻) עם התזמון החלופי.
 
-## Features
+**מה קרה עם הכתוביות האחרונות?** `https://<השרת>/<ההגדרות שלכם>/status` (אותו קישור כמו ההתקנה, עם `status`
+במקום `manifest.json`) מראה לכל סרט: מאיפה נלקח ציר הזמן (`file` / `hash` / `consensus`), אילו כתוביות נבחרו,
+איזה תיקון הופעל (יחס FPS, היסט, חיתוכים) ולמה.
 
-*   Fetches subtitles from OpenSubtitles, plus optional API-key providers (Wyzie Subs, SubSource).
-*   Automatically detects the best available subtitles for two selected languages.
-*   Handles multiple subtitle formats (SRT, ASS/SSA, VTT, SUB, SBV, SMI, LRC, TTML) and auto-extracts ZIP-archived downloads from providers.
-*   **Robust encoding detection:** Handles UTF-16 LE/BE (with BOM), double-encoded BOMs, legacy encodings (Windows-1251, ISO-8859-x), and repairs double-encoded UTF-8 text (Implemented by @ravisorg).
-*   Merges the main language and translation language subtitles into a single `.srt` file.
-*   Formats the translation line to be *italic* and <font color="yellow">yellow</font> (yellow color doesnt work due to stremio overriding the color of subtitles).
-*   **Auto-detects your browser language** and sets it as the default translation language on first use!
-*   Configurable via Stremio addon settings for:
-    *   Main Language (Audio Language)
-    *   Translation Language (Your Language)
-    *   Optional provider API keys (Wyzie, SubSource), Wyzie source selection, and fallback/parallel provider mode
+צבע שונה לכל שפה — בהמשך. זה שינוי בשורה אחת שבונה את הטקסט הממוזג (`src/subtitleMatching.ts`).
 
-## Requirements
+---
 
-*   [Node.js](https://nodejs.org/) (Version 18 or higher)
-*   [npm](https://www.npmjs.com/)
-*   Storage modes reuse existing generated subtitles when the same movie/episode, language pair, and version filename already exists.
-*   **Storage / Serving Configuration** - Configure your choice via the `.env` file (see [`.env.example`](.env.example) for all options):
-    *   **Option 1: Vercel Blob** (cloud) - Create a Vercel Blob in [Vercel Dashboard](https://vercel.com/dashboard/stores), copy the token, and put it in your `.env` as `BLOB_READ_WRITE_TOKEN`
-    *   **Option 2: S3-Compatible Storage** (cloud / self-hosted) - Configure `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`, and `S3_PUBLIC_BASE_URL`. Works with AWS S3, Cloudflare R2, Supabase Storage S3, Backblaze B2, DigitalOcean Spaces, Wasabi, MinIO, and similar providers.
-    *   **Option 3: Local File Storage** (self-hosted) - Set `LOCAL_STORAGE_DIR=./subtitles` in your `.env`. Useful for running on your home network or private server.
-    *   **Option 4: Direct Serving** (self-hosted / Cloudflare Workers) - Set `ENABLE_DIRECT_SERVING=true` in your `.env`. Serves merged subtitles directly from the addon instance using signed lazy URLs. Best for self-hosted setups or Cloudflare Workers.
-*   For S3-compatible storage, `S3_ENDPOINT` is required for providers like Cloudflare R2, Supabase Storage S3, Spaces, B2, Wasabi, and MinIO, but can usually be omitted for regular AWS S3. `S3_PUBLIC_BASE_URL` is app-specific: it is the public-read URL base returned to Stremio, not an AWS SDK setting.
-*   Set `ENABLE_STORAGE_LAZY_SERVING=true` if storage modes should merge only when Stremio clicks a subtitle. Leave it unset to check storage first, then process missing subtitles during the listing request.
-*   Set `SUBTITLE_PAYLOAD_SECRET` for direct-serving installs. Vercel Blob and S3 secret keys can be used for signing automatically when present.
+## English
 
-## Local Setup
+Dual-language subtitles for Stremio and Nuvio — the film's language on top, yours below — **synced to the file
+actually being played**.
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/Serkali-sudo/strelingo-addon
-    cd strelingo-addon
-    ```
-2.  **Install dependencies:**
-    ```bash
-    npm install
-    ```
-3.  **Configure storage** (create `.env` file):
-    ```bash
-    # Copy the example configuration
-    cp .env.example .env
+### Why the original drifted
 
-    # Edit .env and configure your preferred storage option
-    ```
-    See [`.env.example`](.env.example) for all available options and detailed configuration examples.
+Strelingo synced the translation to the main subtitle, but took the main subtitle unverified from the top of the
+OpenSubtitles list. French subtitles are often made for 25 fps (PAL) releases: 4% faster, minutes off by the end.
+Every merged option inherited that timing. Nuvio's phone app sends subtitle add-ons no file name, size or hash, so
+"top of the list" was a blind guess.
 
-## Running the Addon Locally
+### Design
 
-Start the addon server locally:
-```bash
-npm start
-```
+| Step | What | Where |
+|---|---|---|
+| Identify the file | 🎓 streams: the user's stream add-on (AIOStreams) re-listed with `/play` links that record the pick and 302 to the real URL. Or `filename`/`videoSize` from the player, matched against the stream add-on. | `src/file/upstream.ts`, `src/smart/plays.ts`, `src/index.ts` |
+| Read the file | OpenSubtitles hash (2 × 64 KiB) and embedded subtitle timings from the MKV Cues index (Range requests, typically < 1 MB) | `src/file/probe.ts`, `src/file/mkv.ts`, `src/file/osHash.ts` |
+| Reference timeline | file's embedded track → hash-matched subtitle → consensus of downloaded subtitles (film speed preferred over PAL) → top guess | `src/smart/pipeline.ts` |
+| Align | fps ratio + global offset by overlap scoring, then a split DP for cuts; rejects subtitles of another movie/episode by contrast against chance | `src/sync/aligner.ts` |
+| Merge | Strelingo's merge on the shared timeline | `src/subtitleMatching.ts` |
+| Serve | background builds (started at play / subtitle listing), staged results, keep-alive while waiting | `src/smart/jobs.ts` |
 
-Or run in development mode with auto-reload:
-```bash
-npm run dev:node
-```
+Subtitle sources are Strelingo's: OpenSubtitles via Stremio's v3 add-on (no key), Buta-no-subs for Japanese,
+optional Wyzie / SubSource keys.
 
-The addon will be available at `http://localhost:7000/manifest.json`.
+### Routes
 
-## Installing and Configuring in Stremio
+- `/configure`, `/<config>/configure` — install page; `<config>` is base64url JSON (old URI-encoded JSON links still work)
+- `/<config>/manifest.json`
+- `/<config>/stream/:type/:id.json` — 🎓 streams (when a stream add-on URL is configured)
+- `/<config>/play/:token` — signed; records the pick, 302 to the stream
+- `/<config>/subtitles/:type/:id[/:extra].json`
+- `/<config>/dual/:variant/:type/:id/:ctx/strelingo.srt` — the merged subtitle
+- `/<config>/status` — recent builds for this configuration
+- `/health`
 
-1.  Ensure the addon server is running locally (see "Running the Addon Locally").
-2.  Open your web browser and navigate to the addon's local address (usually `http://localhost:7000/` or the address shown in the console when you start it).
-3.  On the addon configuration page that loads:
-    *   Select your desired **Main Language** (typically the language the audio is in).
-    *   Select your desired **Translation Language** (typically your native language or the one you want for comparison).
-    *   **Note:** The Translation Language field is automatically pre-filled with your browser's language if not previously configured!
-    *   *(Optional)* Expand the **"Optional Providers"** section to add Wyzie / SubSource API keys, pick which Wyzie sources to query, and set the provider mode. Leave it collapsed/empty to use only the default sources.
-4.  Click the "Install Addon" button or link displayed on the page (it might be at the bottom).
-5.  Your browser might ask for permission to open the link with Stremio. Allow it.
-6.  Stremio should open and prompt you to confirm the installation **with your selected configuration**. Click "Install".
-
-The addon is now installed and configured with your chosen languages.
-
-## Testing
-
-Run encoding tests to verify subtitle decoding works correctly across 40+ languages:
+### Run & deploy
 
 ```bash
-npm test                                # Run all tests
-npx tsx test/encoding.test.ts --output  # Save decoded files to test/output/
-npx tsx test/download-inputs.ts         # Re-download all test inputs
-npx tsx test/download-inputs.ts tt123456 # Download specific movie
+npm install
+npm start            # http://localhost:7000/configure
+npm test             # aligner, file probing, pipeline, server (offline, synthetic data)
+npm run typecheck
 ```
 
-Tests validate that decoded subtitles contain expected native-language strings (not just English). To add a new test movie, edit `test/movies.ts`.
+Docker: `docker compose up -d`. Render: `render.yaml` blueprint. Needs a long-running Node process (background
+builds and play records live in memory); serverless/edge targets are not supported. See `.env.example` for options.
 
-## Technical Details
+### Tests
 
-*   **Backend:** Node.js + TypeScript
-*   **Framework:** Hono (works on Vercel, Cloudflare Workers, and Node.js)
-*   **Subtitle Sources:** OpenSubtitles API, [Buta no Subs Stremio addon](https://github.com/Pigamer37/buta-no-subs-stremio-addon), and optional key-based providers ([Wyzie Subs](https://sub.wyzie.io), [SubSource](https://subsource.net))
-*   **HTTP Requests:** Native fetch
-*   **Subtitle Parsing:** `srt-parser-2` + built-in multi-format converter
-*   **ZIP Extraction:** `fflate` (for zipped provider downloads)
-*   **Character Encoding Detection:** `chardet`
-*   **Character Encoding Decoding:** `iconv-lite` 
+All tests run offline on synthetic timelines: PAL/NTSC drift, offsets, ad-break cuts, different line splitting,
+missing/extra lines, wrong-movie rejection, a synthetic MKV, and a real file muxed by `mkvmerge`
+(`test/fixtures/`: a 10-minute video with a French track and a forced track).
+`test/subtitleMatching.test.ts` is upstream's and already failed before this fork's changes (the merge started
+keeping leftover translation lines); `npm run test:encoding` needs network access to download its inputs.

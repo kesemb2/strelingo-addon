@@ -1,0 +1,13 @@
+# One-click deploy on Render (render.com → New → Blueprint → this repo).
+# The free plan sleeps after 15 minutes without traffic; point a free uptime
+# pinger (e.g. UptimeRobot) at https://<your-app>.onrender.com/health every
+# 10 minutes so the player never waits for it to wake up.
+services:
+  - type: web
+    name: strelingo-smart
+    runtime: docker
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SECRET
+        generateValue: true

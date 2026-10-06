@@ -1,18 +1,21 @@
-FROM node:20-alpine
+FROM node:22-alpine
 
 WORKDIR /app
 
-# Copy package files first for better layer caching
-COPY package*.json ./
+# Dependencies first (cached until package files change)
+COPY package.json package-lock.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 
-# Install all dependencies (including tsx for running TypeScript)
-RUN npm install
+COPY tsconfig.json ./
+COPY src ./src
 
-# Copy source code
-COPY . .
+# /data keeps the link-signing secret across restarts (mount a volume there)
+RUN mkdir -p /data && chown node:node /data
+ENV NODE_ENV=production PORT=7000 DATA_DIR=/data
+USER node
 
-# Expose the default port
 EXPOSE 7000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s \
+  CMD wget -q -O- "http://127.0.0.1:${PORT}/health" >/dev/null || exit 1
 
-# Run the addon with tsx
-CMD ["npx", "tsx", "src/index.ts"] 
+CMD ["npx", "tsx", "src/index.ts"]

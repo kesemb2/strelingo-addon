@@ -1078,7 +1078,12 @@ export default function landingTemplate(manifest: Manifest, opts: LandingTemplat
                 const config = Object.fromEntries(
                     Array.from(new FormData(mainForm).entries()).filter(([, v]) => String(v).trim() !== '')
                 )
-                const configPath = '/' + encodeURIComponent(JSON.stringify(config))
+                // base64url JSON: survives proxies that mangle %2F inside a path
+                // (the stream add-on link in the config contains slashes).
+                const json = JSON.stringify(config)
+                const b64 = btoa(String.fromCharCode(...new TextEncoder().encode(json)))
+                    .replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '')
+                const configPath = '/' + b64
                 const manifestPath = configPath + '/manifest.json'
 
                 installLink.href = 'stremio://' + window.location.host + manifestPath
