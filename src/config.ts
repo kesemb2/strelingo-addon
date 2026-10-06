@@ -10,6 +10,7 @@ import { parseLangCode } from './languages.js';
 import { parseOptionalProviderConfig, type OptionalProviderConfig } from './providers.js';
 import { addonBase } from './file/upstream.js';
 import { storeCredential } from './store.js';
+import { DEFAULT_MAIN_COLOR, DEFAULT_TRANS_COLOR, parseColor, type LineColors } from './subs/style.js';
 
 export interface UserConfig {
     raw: Record<string, any>;
@@ -20,6 +21,8 @@ export interface UserConfig {
     streamAddonUrl?: string;
     /** Stable, non-reversible id for this configuration (play records, status). */
     userKey: string;
+    /** A color per language line (undefined = the player's own). */
+    colors: LineColors;
 }
 
 export function encodeConfig(obj: Record<string, unknown>): string {
@@ -56,7 +59,11 @@ export function parseUserConfig(segment: string | undefined, fallbackTransLang =
         transLang,
         optional: parseOptionalProviderConfig(raw),
         streamAddonUrl,
-        userKey: createHash('sha256').update(JSON.stringify(raw)).digest('base64url').slice(0, 16)
+        userKey: createHash('sha256').update(JSON.stringify(raw)).digest('base64url').slice(0, 16),
+        colors: {
+            main: parseColor(raw.mainColor, DEFAULT_MAIN_COLOR),
+            trans: parseColor(raw.transColor, DEFAULT_TRANS_COLOR)
+        }
     };
 }
 

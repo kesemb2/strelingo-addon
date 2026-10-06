@@ -91,7 +91,15 @@
   כתובת השרת רואה מה צפיתם.
 - דף לכל הגדרה בנפרד, בלי סיסמה: `https://<השרת>/<ההגדרות שלכם>/status` (הקישור מופיע גם בדף ההגדרות).
 
-צבע שונה לכל שפה — בהמשך. זה שינוי בשורה אחת שבונה את הטקסט הממוזג (`src/subtitleMatching.ts`).
+### צבעים
+
+כל שפה בצבע משלה: **הצרפתית בצהוב, האנגלית בתכלת** (ברירת המחדל — גם קישור שהותקן לפני שהיו צבעים מקבל אותם).
+משנים בדף ההגדרות ("Main language color" / "Translation color", או "Player default" בלי צבע), ואז מתקינים מחדש את
+הקישור החדש. אותם צבעים גם באפשרויות "צרפתית בלבד" / "אנגלית בלבד".
+
+- **Nuvio בטלפון אנדרואיד**: מנוע הניגון שנבחר כברירת מחדל (ExoPlayer) מוחק כל עיצוב בכתוביות — צבע, הדגשה ונטוי —
+  ומציג הכל בצבע אחד. כדי לראות צבעים: **Settings → Playback → Playback engine → libmpv**.
+- **Nuvio באייפון ו-NuvioTV**: הצבעים מופיעים בלי לשנות כלום.
 
 ---
 
@@ -116,7 +124,7 @@ Every merged option inherited that timing. Nuvio's phone app sends subtitle add-
 | Reference timeline | file's embedded text track → hash-matched subtitle → consensus of downloaded subtitles (film speed preferred over PAL) → top guess. A reference counts only once a subtitle fits it (a signs-only or picture track is passed over); reported ones go last | `src/smart/pipeline.ts` |
 | Align | fps ratio + global offset by overlap scoring, then a split DP for cuts; rejects subtitles of another movie/episode by contrast against chance | `src/sync/aligner.ts` |
 | Pair | the translation must share the main line's timeline (else it is fitted to the main line itself) | `src/smart/pipeline.ts` |
-| Merge | Strelingo's merge on the shared timeline; each language alone too | `src/subtitleMatching.ts` |
+| Merge | Strelingo's merge on the shared timeline; each language alone too; a color per language (SRT `<font color>`, set on the configure page; Nuvio's Android phone ExoPlayer strips inline styles — use its libmpv engine) | `src/subtitleMatching.ts`, `src/subs/style.ts` |
 | Serve | background builds (started at play / subtitle listing), one builder across instances (store lease), keep-alive while waiting, never an unsynced guess as ★ | `src/smart/jobs.ts` |
 | Teach | in-player "⚠ … · replace" entries and the activity page: per-video bans of a timing reference or a subtitle | `src/smart/feedback.ts` |
 | Show | append-only activity log + Hebrew activity page (Smart-Hebrew style) | `src/smart/activity.ts`, `src/dashboard/` |
