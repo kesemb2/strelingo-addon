@@ -12,7 +12,7 @@ process.env.EXTERNAL_URL = 'https://strelingo.test';
 const { default: app, encodeConfig } = await import('../src/index.js');
 const { forgetLocalJobs } = await import('../src/smart/jobs.js');
 const { deriveSubtitle } = await import('./synthetic.js');
-const { IMDB, PAL, STREAM_ADDON, makeWorld, srtAccuracy } = await import('./world.js');
+const { FILENAME, IMDB, PAL, STREAM_ADDON, makeWorld, srtAccuracy } = await import('./world.js');
 
 const passed: string[] = [];
 async function check(name: string, fn: () => Promise<void>) {
@@ -43,10 +43,9 @@ await check('health reports shared state and a signing key every instance shares
     assert.equal(h.signing, 'store');
 });
 
-await check('🎓 play on instance A, subtitles on instance B: still synced to the file', async () => {
-    const streams: any = await (await get(`/${cfg}/stream/movie/${IMDB}.json`)).json();
-    const ours = streams.streams.find((s: any) => s.url.includes('/play/') && s.behaviorHints?.filename?.includes('1080p'));
-    const play = await get(ours.url);
+await check('an old 🎓 link played on instance A, subtitles on instance B: still synced to the file', async () => {
+    const { signPayload } = await import('../src/config.js');
+    const play = await get(`/${cfg}/play/${signPayload({ v: IMDB, t: 'movie', u: world.fileUrl, f: FILENAME, s: world.mkv.length })}`);
     assert.equal(play.status, 302);
 
     forgetLocalJobs(); // a fresh instance: nothing in memory

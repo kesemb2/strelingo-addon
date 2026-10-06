@@ -138,7 +138,7 @@
         <li><b>↻ חלופה</b> — תזמון אחר או זוג כתוביות אחר, אם ★ לא מתאים.</li>
         <li><b>צרפתית בלבד / אנגלית בלבד</b> — שפה אחת, על אותו תזמון.</li>
         <li><b>⚠ הסנכרון לא טוב · החלף</b> — מלמד את התוסף: התזמון של מה שראיתם נפסל, ומוגשת מיד גרסה על תזמון אחר. <b>⚠ האנגלית / הצרפתית לא טובה</b> — פוסל את הכתובית של השפה הזו ובוחר אחרת. דיווח נרשם רק אם הכתובית הייתה על המסך לפחות 15 שניות.</li>
-        <li><b>🎓 לסנכרון מדויק</b>: בהגדרות מדביקים את הקישור של AIOStreams, ואז מנגנים זרם שמסומן 🎓. כך התוסף יודע בדיוק איזה קובץ מתנגן וקורא ממנו את התזמון. בלי זה, אפליקציית Nuvio בטלפון לא מוסרת שום פרט על הקובץ.</li>
+        <li><b>מתי זה מסונכרן לקובץ עצמו</b>: כשהנגן מוסר את שם הקובץ שמתנגן (NuvioTV, סטרימיו) והקישור של AIOStreams מוגדר — התוסף מוצא את הקובץ ב-AIOStreams וקורא ממנו את התזמון, כמו ב-Smart-Hebrew. אפליקציית Nuvio בטלפון לא מוסרת שום פרט על הקובץ, ושם התזמון הוא זה שרוב הכתוביות מסכימות עליו.</li>
       </ul>
     </details>
   </section>
@@ -374,7 +374,7 @@
     var f = info.file || {};
     var kv = el("div", { class: "kv" });
     function row(k, v) { if (v != null && v !== "") { kv.append(el("span", {}, k)); kv.append(el("span", {}, v)); } }
-    row("קובץ", f.known ? [f.filename ? el("span", { class: "rel" }, f.filename) : "ידוע", f.size ? " · " + gb(f.size) : "", f.hash ? " · טביעת אצבע " + f.hash : ""] : "לא ידוע — הנגן לא מסר פרטים ולא נוגן זרם 🎓");
+    row("קובץ", f.known ? [f.filename ? el("span", { class: "rel" }, f.filename) : "ידוע", f.size ? " · " + gb(f.size) : "", f.hash ? " · טביעת אצבע " + f.hash : ""] : "לא ידוע — הנגן לא מסר פרטים (אפליקציית Nuvio בטלפון לא מוסרת)");
     row("כתוביות בקובץ", f.embedded ? el("span", { class: "rel" }, f.embedded) : null);
     row("עוגן תזמון", info.reference ? el("span", { class: "rel" }, info.reference) : null);
     if (info.references && info.references.length) {
@@ -438,7 +438,7 @@
     } else if (e.kind === "list") {
       var via = e.file && VIA[e.file.via];
       line.append(el("span", { class: "tag plain" }, "הנגן ביקש רשימה"),
-        via ? el("span", { class: via[0], title: via[2] }, via[1]) : el("span", { class: "tag warn", title: "בלי פרטי קובץ אפשר רק לנחש את התזמון. נגנו זרם 🎓." }, "קובץ לא ידוע"));
+        via ? el("span", { class: via[0], title: via[2] }, via[1]) : el("span", { class: "tag warn", title: "הנגן לא מסר את שם הקובץ, אז התזמון לפי רוב הכתוביות. NuvioTV וסטרימיו מוסרים; Nuvio בטלפון לא." }, "קובץ לא ידוע"));
     }
     line.append(el("span", { class: "when", title: clock(e.at) }, ago(e.at)));
     var row = el("div", { class: "rowx" }, line);
@@ -532,7 +532,7 @@
       $("version").textContent = "v" + s.version;
       var chips = [];
       chips.push(s.sharedState === "memory"
-        ? el("span", { class: "chip " + (s.vercel ? "bad" : ""), title: "בלי Upstash/Turso כל מופע של השרת זוכר לבד — ב-Vercel זה שובר את 🎓 ואת היומן" }, (s.vercel ? "✗ " : "– ") + "זיכרון זמני")
+        ? el("span", { class: "chip " + (s.vercel ? "bad" : ""), title: "בלי Upstash/Turso כל מופע של השרת זוכר לבד — ב-Vercel זה שובר את היומן והדיווחים" }, (s.vercel ? "✗ " : "– ") + "זיכרון זמני")
         : el("span", { class: "chip ok", title: "היומן, הבחירות והדיווחים משותפים לכל המופעים" }, "✓ זיכרון משותף (" + s.sharedState + ")"));
       if (s.scope === "all") {
         chips.push(s.protected
@@ -541,8 +541,8 @@
       } else {
         chips.push(el("span", { class: "chip" }, pairOf(s.pair).label));
         chips.push(s.streamAddon
-          ? el("span", { class: "chip ok", title: "נגנו זרם שמסומן 🎓 והכתוביות יסונכרנו לקובץ עצמו" }, "✓ AIOStreams מחובר")
-          : el("span", { class: "chip warn", title: "בלי זה Nuvio בטלפון לא מוסר שום פרט על הקובץ, והתזמון משוער" }, "– AIOStreams לא מחובר"));
+          ? el("span", { class: "chip ok", title: "כשהנגן מוסר את שם הקובץ (NuvioTV, סטרימיו), הקובץ נמצא ב-AIOStreams והכתוביות מסונכרנות אליו" }, "✓ AIOStreams מחובר")
+          : el("span", { class: "chip warn", title: "בלי זה אי אפשר למצוא את הקובץ שמתנגן גם כשהנגן מוסר את שמו" }, "– AIOStreams לא מחובר"));
       }
       $("chips").replaceChildren.apply($("chips"), chips);
     });

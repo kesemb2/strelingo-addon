@@ -6,8 +6,8 @@ import landingTemplate, { type Manifest } from './landingTemplate.js';
 import { browserLanguageMap, languageOptions } from './languages.js';
 import { resolveKitsuToImdb } from './kitsuMapping.js';
 import { OPTIONAL_PROVIDERS, WYZIE_SOURCES } from './providers.js';
-import { encodeConfig, parseUserConfig, signingSource, signPayload, verifyPayload, type UserConfig } from './config.js';
-import { fetchUpstreamStreams, normName, type UpstreamStream } from './file/upstream.js';
+import { encodeConfig, parseUserConfig, signingSource, verifyPayload, type UserConfig } from './config.js';
+import { normName } from './file/upstream.js';
 import { latestPlay, recordPlay, usesPlayLinks } from './smart/plays.js';
 import { keepAlive, peekResult, startJob, waitForJob, type JobContext } from './smart/jobs.js';
 import { logEvent, type ActivityEvent } from './smart/activity.js';
@@ -23,7 +23,7 @@ import { registerDashboard } from './dashboard/routes.js';
 // ---------------------------------------------------------------------------
 
 const ADDON_ID = 'com.kesemb2.strelingo.smart';
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 
 // Vercel: let a subtitle request wait for its build (and the build finish
 // after the response) instead of the 10 s default of older projects.
@@ -36,14 +36,13 @@ function addonName(): string {
 
 function getManifest(config?: UserConfig | null): Manifest {
     const resources: string[] = ['subtitles'];
-    if (config?.streamAddonUrl) resources.push('stream');
     const pair = config ? ` (${config.mainLang.toUpperCase()}+${config.transLang.toUpperCase()})` : '';
     return {
         id: ADDON_ID,
         version: VERSION,
         name: `${addonName()}${pair}`,
-        description: 'Two subtitle lines at once — the film\'s language and yours — synced to the very file you play. '
-            + 'Paste your AIOStreams link below and play a 🎓 stream for exact sync, in Stremio and Nuvio alike.',
+        description: 'Two subtitle lines at once — the film\'s language and yours — synced to the file you play '
+            + 'whenever the player says which one it is (NuvioTV, Stremio), else to the timing most subtitles agree on.',
         githubUrl: 'https://github.com/kesemb2/strelingo-addon',
         resources,
         subtitleExtra: ['videoHash', 'videoSize', 'filename'],
@@ -64,11 +63,11 @@ function getManifest(config?: UserConfig | null): Manifest {
             },
             {
                 key: 'streamAddonUrl', type: 'text',
-                title: '🎓 Your AIOStreams link — for exact sync (recommended)',
+                title: 'Your AIOStreams link — for exact sync (recommended)',
                 description: 'Paste the manifest URL of your AIOStreams (or any stream add-on), exactly as installed. '
-                    + 'The add-on then lists its streams marked 🎓 — play one of those, and both subtitle lines are '
-                    + 'synced to that exact file. Nuvio\'s phone app tells subtitle add-ons nothing about the file, '
-                    + 'so this is the only way to get exact sync there.'
+                    + 'When the player names the file it plays (NuvioTV, Stremio), the add-on finds that file there '
+                    + 'and syncs both lines to the subtitles inside it. Nuvio\'s phone app names no file: there the '
+                    + 'timing is the one most subtitles agree on.'
             },
             {
                 key: 'mainColor', type: 'select', title: 'Main language color',
@@ -331,7 +330,10 @@ app.get('/:config/manifest.json', c => {
     return c.json(manifest);
 });
 
-// --- Streams: the user's stream add-on, routed through /play -------------
+// --- /play links from versions that listed 🎓 streams -----------------------
+//
+// Players keep stream links (continue watching), so these still work: they
+// note the file being played and redirect to it.
 
 interface PlayPayload {
     v: string;   // video id
@@ -342,41 +344,13 @@ interface PlayPayload {
     hd?: Record<string, string>; // request headers the stream needs
 }
 
-app.get('/:config/stream/:type/:id', async c => {
-    const config = parseUserConfig(c.req.param('config'));
-    const type = c.req.param('type');
-    const id = decodeURIComponent(stripJson(c.req.param('id')));
-    if (!config?.streamAddonUrl) return c.json({ streams: [] });
+// The add-on no longer lists streams; a player holding an older manifest
+// still asks, and gets none.
+app.get('/:config/stream/:type/:id', c => c.json({ streams: [] }));
 
-    let upstream: UpstreamStream[] = [];
-    try {
-        upstream = await fetchUpstreamStreams(config.streamAddonUrl, type, id);
-    } catch (e: any) {
-        console.warn(`[stream] stream add-on failed for ${id}: ${e.message}`);
-        return c.json({ streams: [], cacheMaxAge: 0 });
-    }
-
-    const base = `${externalBase(c)}/${c.req.param('config')}`;
-    const streams = upstream
-        .filter(s => s && typeof s.url === 'string' && /^https?:\/\//.test(s.url))
-        .map(s => {
-            const hints = s.behaviorHints || {};
-            const token = signPayload({
-                v: id, t: type, u: s.url as string,
-                f: hints.filename || undefined,
-                s: Number(hints.videoSize) || undefined,
-                hd: hints.proxyHeaders?.request
-            } satisfies PlayPayload);
-            const name = typeof s.name === 'string' ? s.name : 'Stream';
-            return { ...s, name: `🎓 ${name}`, url: `${base}/play/${token}` };
-        });
-    console.log(`[stream] ${type} ${id}: wrapped ${streams.length} of ${upstream.length} stream(s)`);
-    return c.json({ streams, cacheMaxAge: 0 }, 200, { 'Cache-Control': 'no-store' });
-});
-
-// A 🎓 stream: note which file this user is playing, start preparing its
-// subtitles, and hand the player the real URL. Players re-open the URL on
-// every seek, so this stays a cheap redirect.
+// Note which file this user is playing, start preparing its subtitles, and
+// hand the player the real URL. Players re-open the URL on every seek, so
+// this stays a cheap redirect.
 app.on(['GET', 'HEAD'], '/:config/play/:token', async c => {
     const config = parseUserConfig(c.req.param('config'));
     const payload = verifyPayload<PlayPayload>(c.req.param('token'));

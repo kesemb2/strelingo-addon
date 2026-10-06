@@ -5,6 +5,7 @@ process.env.SECRET = 'test-secret-test-secret-test-secret';
 process.env.EXTERNAL_URL = 'https://strelingo.test';
 
 const { default: app, encodeConfig } = await import('../src/index.js');
+const { signPayload } = await import('../src/config.js');
 const { deriveSubtitle } = await import('./synthetic.js');
 const { FILENAME, IMDB, PAL, STREAM_ADDON, makeWorld, srtAccuracy } = await import('./world.js');
 
@@ -53,48 +54,57 @@ async function lastBuild(cfg: string): Promise<any> {
     return (await events(cfg)).find(e => e.kind === 'build' && e.variant === 1)?.info;
 }
 const entry = (list: any, kind: string) => list.subtitles.find((s: any) => s.url.includes(`/sub/${kind}/`));
+// A 🎓 link from an earlier version, still kept by the player (continue watching).
+const oldPlayLink = (cfg: string, world: { fileUrl: string; mkv: Uint8Array }) =>
+    `/${cfg}/play/${signPayload({ v: IMDB, t: 'movie', u: world.fileUrl, f: FILENAME, s: world.mkv.length })}`;
 // French line then English line; by default each in its own color.
 const TWO_LINES = /<font color="#FFE066"><b>.+<\/b><\/font>\n<font color="#8CD9FF"><i>> .+<\/i><\/font>/;
 
-await check('manifest: configured add-on also serves 🎓 streams', async () => {
+await check('manifest: subtitles only; a player with an older manifest asking for streams gets none', async () => {
     const cfg = configWithStreams();
     const res = await get(`/${cfg}/manifest.json`);
     const m: any = await res.json();
-    assert.deepEqual(m.resources, ['subtitles', 'stream']);
+    assert.deepEqual(m.resources, ['subtitles']);
     assert.equal(m.name, 'Strelingo Smart (FRE+ENG)');
     assert.equal(m.behaviorHints.configurationRequired, false);
     const bare: any = await (await get('/manifest.json')).json();
     assert.deepEqual(bare.resources, ['subtitles']);
     assert.equal(bare.behaviorHints.configurationRequired, true);
+    const streams: any = await (await get(`/${cfg}/stream/movie/${IMDB}.json`)).json();
+    assert.deepEqual(streams.streams, []);
 });
 
-await check('Nuvio phone: 🎓 stream → play → subtitles with no file info → exact sync', async () => {
+await check('Nuvio phone: no file info → the timing most subtitles agree on, and ★ says so', async () => {
     const world = useWorld();
     const cfg = configWithStreams();
-
-    const streams: any = await (await get(`/${cfg}/stream/movie/${IMDB}.json`)).json();
-    assert.equal(streams.streams.length, 2, 'torrent-only stream skipped');
-    const ours = streams.streams.find((s: any) => s.behaviorHints?.filename === FILENAME);
-    assert.match(ours.name, /^🎓 /);
-    assert.match(ours.url, /\/play\//);
-    assert.equal(ours.behaviorHints.bingeGroup, 'aio-1080', 'stream hints passed through');
-
-    const play = await get(ours.url, { method: 'HEAD' });
-    assert.equal(play.status, 302);
-    assert.equal(play.headers.get('location'), world.fileUrl);
 
     // Nuvio's phone app: /subtitles/movie/<id>.json, nothing else.
     const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}.json`)).json();
     const star = list.subtitles[0];
-    assert.match(star.id, /^★ צרפתית\+אנגלית · /, 'Nuvio shows the id: it is the readable name');
+    assert.equal(star.id, '★ צרפתית+אנגלית · תזמון משוער', 'Nuvio shows the id: it is the readable name');
     assert.ok(list.subtitles.every((s: any) => s.lang === 'eng'), 'listed under the viewer\'s language');
     assert.ok(list.subtitles.every((s: any) => /\.srt$/.test(s.url)), 'Nuvio picks the parser from the URL extension');
     assert.equal(new Set(list.subtitles.map((s: any) => s.id)).size, list.subtitles.length, 'unique ids');
 
     const srt = await (await get(star.url)).text();
+    assert.match(srt, TWO_LINES);
+    const info = await lastBuild(cfg);
+    assert.ok(['consensus', 'guess'].includes(info.tier), info.tier);
+    assert.equal(info.file.known, false);
+    void world;
+});
+
+await check('an old 🎓 link the player kept still plays, and syncs the subtitles to its file', async () => {
+    const world = useWorld();
+    const cfg = configWithStreams();
+    const play = await get(oldPlayLink(cfg, world), { method: 'HEAD' });
+    assert.equal(play.status, 302);
+    assert.equal(play.headers.get('location'), world.fileUrl);
+
+    const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}.json`)).json();
+    const srt = await (await get(list.subtitles[0].url)).text();
     const acc = srtAccuracy(srt, world.speech);
     assert.ok(acc > 0.95, `accuracy ${acc}`);
-
     const info = await lastBuild(cfg);
     assert.equal(info.tier, 'file');
     assert.equal(info.file.via, 'play');
@@ -164,10 +174,9 @@ await check('a color per language: French yellow, English light blue by default;
 });
 
 await check('"⚠ the sync is bad" teaches it: the next ★ uses another timing, undo brings it back', async () => {
-    useWorld();
+    const world = useWorld();
     const cfg = configWithStreams();
-    const streams: any = await (await get(`/${cfg}/stream/movie/${IMDB}.json`)).json();
-    await get(streams.streams.find((s: any) => s.behaviorHints?.filename === FILENAME).url, { method: 'HEAD' });
+    await get(oldPlayLink(cfg, world), { method: 'HEAD' });
     const list: any = await (await get(`/${cfg}/subtitles/movie/${IMDB}.json`)).json();
     await (await get(list.subtitles[0].url)).text();
     await settle();
@@ -224,11 +233,9 @@ await check('"⚠ the English is bad" swaps the English subtitle only', async ()
 });
 
 await check('an earlier 🎓 pick does not override a different stream the player names now', async () => {
-    useWorld();
+    const world = useWorld();
     const cfg = configWithStreams();
-    const streams: any = await (await get(`/${cfg}/stream/movie/${IMDB}.json`)).json();
-    const ours = streams.streams.find((s: any) => s.behaviorHints?.filename === FILENAME);
-    await get(ours.url, { method: 'HEAD' });
+    await get(oldPlayLink(cfg, world), { method: 'HEAD' });
     // Later the player (NuvioTV) reports another stream of the same title.
     const other = 'Le.Film.2021.2160p.BluRay-XYZ.mkv';
     const extra = `filename=${encodeURIComponent(other)}&videoSize=40000000000`;
