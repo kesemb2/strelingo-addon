@@ -63,15 +63,33 @@
 ## שימוש
 
 1. בוחרים סרט → **בוחרים סטרים שמתחיל ב-🎓** (באותה איכות שהייתם בוחרים ב-AIOStreams).
-2. בנגן → כתוביות → **French (Strelingo Smart …)**.
+2. בנגן → כתוביות → תחת **אנגלית** (השפה שלכם) מופיעות האפשרויות של התוסף, כל אחת בשם שאומר מה היא:
 
-אם בחרתם סטרים רגיל (לא 🎓) בטלפון, התוסף לא יודע מה מתנגן ויבחר את התזמון הנפוץ — בדרך כלל טוב, אבל בלי
-ערובה. ההבדל יהיה לכל היותר היסט קבוע, וכפתור ה-delay של הכתוביות ב-Nuvio מתקן אותו. כשאין קישור AIOStreams
-בהגדרות, מוצעת גם אפשרות שנייה (↻) עם התזמון החלופי.
+| אפשרות | מה זה |
+|---|---|
+| `★ צרפתית+אנגלית · מסונכרן לקובץ` | שתי השורות, מסונכרנות לכתוביות שמוטמעות בקובץ שמתנגן. אחרי הנקודה כתוב לפי מה: *מסונכרן לקובץ*, *לפי רוב הכתוביות* (אין מידע על הקובץ — התזמון שרוב הכתוביות מסכימות עליו), *תזמון משוער*, או *לפי הקובץ* (עוד בבנייה). |
+| `↻ צרפתית+אנגלית · חלופה` | תזמון אחר, או זוג כתוביות אחר על אותו תזמון. |
+| `צרפתית בלבד · מסונכרן` / `אנגלית בלבד · מסונכרן` | שפה אחת, על אותו תזמון בדיוק. |
+| `⚠ הסנכרון לא טוב · החלף` | **מלמד את התוסף**: התזמון של מה שראיתם נפסל לסרט הזה, ומוגשת מיד גרסה על התזמון הבא. |
+| `⚠ האנגלית לא טובה · החלף` / `⚠ הצרפתית לא טובה · החלף` | פוסל את הכתובית בשפה הזו (תרגום גרוע, סרט אחר) ובוחר את הבאה. |
 
-**מה קרה עם הכתוביות האחרונות?** `https://<השרת>/<ההגדרות שלכם>/status` (אותו קישור כמו ההתקנה, עם `status`
-במקום `manifest.json`) מראה לכל סרט: מאיפה נלקח ציר הזמן (`file` / `hash` / `consensus`), אילו כתוביות נבחרו,
-איזה תיקון הופעל (יחס FPS, היסט, חיתוכים) ולמה.
+כמו ב-Smart-Hebrew: דיווח מהנגן נספר רק אם הכתובית הייתה על המסך לפחות 15 שניות (נגנים שמורידים את כל הרשימה
+מראש לא "מדווחים" בטעות), ופעם אחת לכל כתובית שהוגשה. מה שדווח עובר לסוף התור — לא נמחק: אם אין שום אפשרות אחרת,
+עדיף משהו מכלום. כל דיווח אפשר לבטל בדף הפעילות.
+
+אם בחרתם סטרים רגיל (לא 🎓) בטלפון, התוסף לא יודע מה מתנגן ויבחר את התזמון שרוב הכתוביות מסכימות עליו — בדרך כלל
+טוב, אבל בלי ערובה.
+
+### דף הפעילות — מה קרה עם כל כתובית
+
+`https://<השרת>/` (או `/status`) — כמו ב-Smart-Hebrew: לכל סרט שנצפה — פוסטר ושם, הקובץ שהתנגן (ואיך התוסף ידע
+עליו), כל בקשה של הנגן ומה הוגש לה (וכמה זמן חיכה), ובלחיצה על "פרטים": איזה עוגן תזמון נבחר ואילו נבדקו ונפסלו
+ולמה, איזו כתובית נבחרה בכל שפה ואיזה תיקון הופעל (מהירות PAL, הזזה, חיתוכים, אחוז התאמה), האם שתי השורות
+מסונכרנות זו לזו, כל המועמדות, וזמני כל שלב. משם אפשר גם לדווח "סנכרון לא טוב" / "האנגלית לא טובה" ולבטל דיווחים.
+
+- **מומלץ להגדיר `ADMIN_PASSWORD`** ב-Vercel (Settings → Environment Variables → Redeploy): אחרת כל מי שיודע את
+  כתובת השרת רואה מה צפיתם.
+- דף לכל הגדרה בנפרד, בלי סיסמה: `https://<השרת>/<ההגדרות שלכם>/status` (הקישור מופיע גם בדף ההגדרות).
 
 צבע שונה לכל שפה — בהמשך. זה שינוי בשורה אחת שבונה את הטקסט הממוזג (`src/subtitleMatching.ts`).
 
@@ -95,11 +113,14 @@ Every merged option inherited that timing. Nuvio's phone app sends subtitle add-
 |---|---|---|
 | Identify the file | 🎓 streams: the user's stream add-on (AIOStreams) re-listed with `/play` links that record the pick and 302 to the real URL. Or `filename`/`videoSize` from the player, matched against the stream add-on. | `src/file/upstream.ts`, `src/smart/plays.ts`, `src/index.ts` |
 | Read the file | OpenSubtitles hash (2 × 64 KiB) and embedded subtitle timings from the MKV Cues index (Range requests, typically < 1 MB) | `src/file/probe.ts`, `src/file/mkv.ts`, `src/file/osHash.ts` |
-| Reference timeline | file's embedded track → hash-matched subtitle → consensus of downloaded subtitles (film speed preferred over PAL) → top guess | `src/smart/pipeline.ts` |
+| Reference timeline | file's embedded text track → hash-matched subtitle → consensus of downloaded subtitles (film speed preferred over PAL) → top guess. A reference counts only once a subtitle fits it (a signs-only or picture track is passed over); reported ones go last | `src/smart/pipeline.ts` |
 | Align | fps ratio + global offset by overlap scoring, then a split DP for cuts; rejects subtitles of another movie/episode by contrast against chance | `src/sync/aligner.ts` |
-| Merge | Strelingo's merge on the shared timeline | `src/subtitleMatching.ts` |
-| Serve | background builds (started at play / subtitle listing), staged results, keep-alive while waiting | `src/smart/jobs.ts` |
-| Share | 🎓 picks and finished builds across instances (Upstash / Turso / memory) | `src/store.ts` |
+| Pair | the translation must share the main line's timeline (else it is fitted to the main line itself) | `src/smart/pipeline.ts` |
+| Merge | Strelingo's merge on the shared timeline; each language alone too | `src/subtitleMatching.ts` |
+| Serve | background builds (started at play / subtitle listing), one builder across instances (store lease), keep-alive while waiting, never an unsynced guess as ★ | `src/smart/jobs.ts` |
+| Teach | in-player "⚠ … · replace" entries and the activity page: per-video bans of a timing reference or a subtitle | `src/smart/feedback.ts` |
+| Show | append-only activity log + Hebrew activity page (Smart-Hebrew style) | `src/smart/activity.ts`, `src/dashboard/` |
+| Share | 🎓 picks, builds, reports and the log across instances (Upstash / Turso / memory) | `src/store.ts` |
 
 Subtitle sources are Strelingo's: OpenSubtitles via Stremio's v3 add-on (no key), Buta-no-subs for Japanese,
 optional Wyzie / SubSource keys.
@@ -110,9 +131,10 @@ optional Wyzie / SubSource keys.
 - `/<config>/manifest.json`
 - `/<config>/stream/:type/:id.json` — 🎓 streams (when a stream add-on URL is configured)
 - `/<config>/play/:token` — signed; records the pick, 302 to the stream
-- `/<config>/subtitles/:type/:id[/:extra].json`
-- `/<config>/dual/:variant/:type/:id/:ctx/strelingo.srt` — the merged subtitle
-- `/<config>/status` — recent builds for this configuration
+- `/<config>/subtitles/:type/:id[/:extra].json` — the entries (★, ↻, each language alone, ⚠ reports), all under the translation language; Nuvio shows the `id`, so it is the readable name
+- `/<config>/sub/:entry/:type/:id/:ctx/strelingo-<entry>.srt` — one entry (`star`, `alt`, `main`, `trans`, `bad_sync`, `bad_trans`, `bad_main`); `/<config>/dual/...` links from 1.0 still work
+- `/` and `/status` — everyone's activity (locked by `ADMIN_PASSWORD` when set); `/api/status`, `/api/activity`, `/api/login`, `/api/feedback`, `/api/feedback/undo`
+- `/<config>/status` — this configuration's activity; same API under `/<config>/api/…`
 - `/health`
 
 ### Run & deploy
@@ -120,8 +142,9 @@ optional Wyzie / SubSource keys.
 ```bash
 npm install
 npm start            # http://localhost:7000/configure
-npm test             # aligner, file probing, stores, pipeline, server, multi-instance (offline, synthetic data)
+npm test             # aligner, file probing, stores, pipeline, server, multi-instance, activity page (offline, synthetic data)
 npm run typecheck
+npm run embed        # after editing src/dashboard/page.html (regenerates page.ts)
 ```
 
 - **Vercel**: import the repo (`vercel.json` routes everything to `src/index.ts` via `@vercel/node`) and connect a
@@ -129,6 +152,8 @@ npm run typecheck
   or Turso (`TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`). Requests may land on different instances, so 🎓 picks,
   finished builds and history live there; builds outlive their response through `waitUntil`; the `/play` signing
   key is derived from the store token unless `SECRET` is set. Check `/health`: `sharedState` must not be `memory`.
+  `src/index.ts` exports `config = { maxDuration: 60 }` so a subtitle request may wait for its build. Set
+  `ADMIN_PASSWORD` to lock the activity page.
 - **Docker**: `docker compose up -d`. **Render**: `render.yaml` blueprint. A single long-running process needs no
   store (memory is shared), though one can be used.
 

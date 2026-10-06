@@ -36,6 +36,7 @@ export interface FakeTrack {
     lang: string;
     name?: string;
     forced?: boolean;
+    codec?: string;
     /** [startMs, durationMs | null] */
     cues: Array<[number, number | null]>;
 }
@@ -48,7 +49,7 @@ export function buildMkv(tracks: FakeTrack[], paddingBytes = 400_000): Uint8Arra
     const trackEntries = tracks.flatMap(t => el(0xAE, [
         ...el(0xD7, uintBytes(t.number, 1)),
         ...el(0x83, uintBytes(0x11, 1)),
-        ...el(0x86, strBytes('S_TEXT/UTF8')),
+        ...el(0x86, strBytes(t.codec || 'S_TEXT/UTF8')),
         ...el(0x22B59C, strBytes(t.lang)),
         ...(t.name ? el(0x536E, strBytes(t.name)) : []),
         ...(t.forced ? el(0x55AA, uintBytes(1, 1)) : [])

@@ -1089,6 +1089,8 @@ export default function landingTemplate(manifest: Manifest, opts: LandingTemplat
                 installLink.href = 'stremio://' + window.location.host + manifestPath
                 webInstallLink.href = 'https://web.strem.io/#/addons?addon=' + encodeURIComponent(window.location.protocol + '//' + window.location.host + manifestPath)
                 copyLinkBtn.dataset.url = window.location.protocol + '//' + window.location.host + manifestPath
+                const activityLink = document.getElementById('activityLink')
+                if (activityLink) activityLink.href = configPath + '/status'
 
                 const mainSel = document.getElementById('mainLang')
                 const transSel = document.getElementById('transLang')
@@ -1216,6 +1218,10 @@ export default function landingTemplate(manifest: Manifest, opts: LandingTemplat
             <a id="webInstallLink" class="btn btn-secondary" href="#" target="_blank">Web Install</a>
             <button id="copyLinkBtn" class="btn btn-secondary" data-url="#">Copy Link</button>
         </div>
+        <p class="description" style="margin-top:12px">
+            <a id="activityLink" href="/status" target="_blank" rel="noopener">📊 דף הפעילות — מה קרה עם כל כתובית</a>
+            (שמרו את הקישור: הוא שלכם, לפי ההגדרות האלה)
+        </p>
 
         ${contactHTML}
     </div>

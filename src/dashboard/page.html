@@ -1,0 +1,569 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Strelingo · פעילות</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Heebo:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #f4f5f7; --surface: #ffffff; --surface-2: #f0f1f4; --border: #e2e4e9;
+    --text: #1b1d22; --muted: #6a6f7b; --accent: #2f6fde; --accent-ink: #ffffff;
+    --ok: #13875b; --ok-bg: #e3f5ec; --warn: #a35d00; --warn-bg: #fff1dc;
+    --bad: #c42b3a; --bad-bg: #fde8ea; --info: #2459c7; --info-bg: #e5edfd;
+    --shadow: 0 1px 2px rgba(16,20,30,.05), 0 4px 16px rgba(16,20,30,.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #111318; --surface: #1a1d24; --surface-2: #222631; --border: #2c313d;
+      --text: #eceef3; --muted: #9aa0ad; --accent: #6f9cff; --accent-ink: #0b1020;
+      --ok: #4cc98f; --ok-bg: #133526; --warn: #f0a44b; --warn-bg: #3a2a12;
+      --bad: #ff7482; --bad-bg: #3d1a20; --info: #7aa5ff; --info-bg: #182a4d;
+      --shadow: none;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 "Heebo", system-ui, -apple-system, "Segoe UI", Arial, sans-serif;
+  }
+  main { max-width: 940px; margin: 0 auto; padding: 24px 16px 48px; }
+  header { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; flex-wrap: wrap; }
+  header h1 { font-size: 22px; margin: 0; font-weight: 700; }
+  .version { color: var(--muted); font-size: 13px; }
+  header .btn { margin-inline-start: auto; }
+  .card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+    padding: 18px; margin-bottom: 16px; box-shadow: var(--shadow);
+  }
+  .card h2 { font-size: 16px; margin: 0 0 12px; font-weight: 700; }
+  button, .btn {
+    font: inherit; font-weight: 500; border-radius: 10px; padding: 8px 14px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+  }
+  button:hover, .btn:hover { filter: brightness(0.97); }
+  .primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    font-size: 13px; padding: 3px 10px; border-radius: 999px;
+    background: var(--surface-2); color: var(--muted); border: 1px solid var(--border);
+  }
+  .chip.ok { background: var(--ok-bg); color: var(--ok); border-color: transparent; }
+  .chip.bad { background: var(--bad-bg); color: var(--bad); border-color: transparent; }
+  .chip.warn { background: var(--warn-bg); color: var(--warn); border-color: transparent; }
+  .muted { color: var(--muted); }
+  .small { font-size: 13px; }
+  details.help summary { cursor: pointer; font-weight: 700; }
+  .help ul { margin: 8px 0 0; padding-inline-start: 20px; }
+  .help li { margin: 4px 0; }
+  .help code { background: var(--surface-2); border-radius: 6px; padding: 0 5px; }
+
+  .entry { display: grid; grid-template-columns: 64px 1fr; gap: 14px; padding: 16px 0; border-top: 1px solid var(--border); }
+  .entry:first-of-type { border-top: 0; padding-top: 0; }
+  .poster { width: 64px; height: 96px; border-radius: 8px; background: var(--surface-2); object-fit: cover; }
+  .poster.empty { display: flex; align-items: center; justify-content: center; font-size: 24px; color: var(--muted); }
+  .entry-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; }
+  .entry-title { font-weight: 700; font-size: 16px; color: inherit; text-decoration: none; }
+  .ep { font-size: 12px; font-weight: 700; padding: 1px 7px; border-radius: 6px; background: var(--info-bg); color: var(--info); }
+  .when { margin-inline-start: auto; font-size: 13px; color: var(--muted); white-space: nowrap; }
+  .file {
+    direction: ltr; text-align: right; font: 12px ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin: 2px 0 6px;
+  }
+  .verdict { margin: 6px 0 4px; font-weight: 500; }
+  .verdict.ok { color: var(--ok); }
+  .verdict.warn { color: var(--warn); }
+  .verdict.bad { color: var(--bad); }
+  @media (max-width: 560px) { .entry { grid-template-columns: 44px 1fr; gap: 10px; } .poster { width: 44px; height: 66px; } }
+  .rows { margin-top: 10px; display: grid; gap: 6px; }
+  .rowx { background: var(--surface-2); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+  .rowx > .line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; }
+  .rowx details { margin-top: 6px; }
+  .rowx summary { cursor: pointer; color: var(--muted); }
+  .tag { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 6px; white-space: nowrap; }
+  .tag.ok { background: var(--ok-bg); color: var(--ok); }
+  .tag.info { background: var(--info-bg); color: var(--info); }
+  .tag.warn { background: var(--warn-bg); color: var(--warn); }
+  .tag.bad { background: var(--bad-bg); color: var(--bad); }
+  .tag.plain { background: var(--surface); color: var(--muted); border: 1px solid var(--border); }
+  .rel { direction: ltr; unicode-bidi: isolate; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; overflow-wrap: anywhere; }
+  .kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 10px; margin-top: 6px; }
+  .kv > :nth-child(odd) { color: var(--muted); }
+  table.cands { border-collapse: collapse; margin-top: 6px; font-size: 12px; width: 100%; }
+  table.cands th, table.cands td { text-align: start; padding: 2px 6px; border-top: 1px solid var(--border); white-space: nowrap; }
+  table.cands td.rel { white-space: normal; }
+  .scroll { overflow-x: auto; }
+  .fb { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-top: 10px; }
+  .fb button { font-size: 12px; padding: 3px 9px; border-radius: 8px; background: var(--surface); }
+  .fb button:hover { border-color: var(--bad); color: var(--bad); }
+  .fb .done { font-size: 12px; color: var(--bad); }
+  .fb .undo { border: 0; background: none; color: var(--muted); text-decoration: underline; padding: 0; }
+  .empty-state { text-align: center; padding: 28px 8px; color: var(--muted); }
+  footer { color: var(--muted); font-size: 12px; text-align: center; margin-top: 8px; }
+  .overlay { position: fixed; inset: 0; background: rgba(10,12,18,.55); display: none; align-items: center; justify-content: center; padding: 16px; }
+  .overlay.show { display: flex; }
+  .login { width: 100%; max-width: 340px; }
+  .login input {
+    width: 100%; font: inherit; padding: 10px 12px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text); margin: 8px 0 12px;
+  }
+  .toast {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--text); color: var(--bg); padding: 8px 14px; border-radius: 10px;
+    font-size: 14px; opacity: 0; transition: opacity .2s; pointer-events: none;
+  }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Strelingo · מה קרה עם כל כתובית</h1>
+    <span class="version" id="version"></span>
+    <a class="btn" id="configure">⚙️ הגדרה והתקנה</a>
+  </header>
+
+  <section class="card">
+    <h2>מצב</h2>
+    <div class="chips" id="chips"><span class="chip">טוען…</span></div>
+  </section>
+
+  <section class="card">
+    <details class="help">
+      <summary>מה כל אפשרות בנגן עושה</summary>
+      <ul>
+        <li><b>★ צרפתית+אנגלית</b> — שתי השורות יחד, מסונכרנות. אחרי הנקודה כתוב לפי מה: <i>מסונכרן לקובץ</i> (לפי הכתוביות שבתוך הקובץ שמתנגן — הכי מדויק), <i>לפי רוב הכתוביות</i> (התזמון שרוב הכתוביות מסכימות עליו — לא נבדק מול הקובץ), <i>תזמון משוער</i>.</li>
+        <li><b>↻ חלופה</b> — תזמון אחר או זוג כתוביות אחר, אם ★ לא מתאים.</li>
+        <li><b>צרפתית בלבד / אנגלית בלבד</b> — שפה אחת, על אותו תזמון.</li>
+        <li><b>⚠ הסנכרון לא טוב · החלף</b> — מלמד את התוסף: התזמון של מה שראיתם נפסל, ומוגשת מיד גרסה על תזמון אחר. <b>⚠ האנגלית / הצרפתית לא טובה</b> — פוסל את הכתובית של השפה הזו ובוחר אחרת. דיווח נרשם רק אם הכתובית הייתה על המסך לפחות 15 שניות.</li>
+        <li><b>🎓 לסנכרון מדויק</b>: בהגדרות מדביקים את הקישור של AIOStreams, ואז מנגנים זרם שמסומן 🎓. כך התוסף יודע בדיוק איזה קובץ מתנגן וקורא ממנו את התזמון. בלי זה, אפליקציית Nuvio בטלפון לא מוסרת שום פרט על הקובץ.</li>
+      </ul>
+    </details>
+  </section>
+
+  <section class="card">
+    <h2>מה נצפה לאחרונה</h2>
+    <div id="feed"><div class="empty-state">טוען…</div></div>
+  </section>
+
+  <footer id="footer">מתרענן אוטומטית כל דקה.</footer>
+</main>
+
+<div class="overlay" id="login-overlay">
+  <form class="card login" id="login-form">
+    <h2>כניסה</h2>
+    <div class="small muted">הדף מוגן בסיסמה (ADMIN_PASSWORD).</div>
+    <input type="password" id="password" autocomplete="current-password" aria-label="סיסמה">
+    <button class="primary" type="submit" style="width:100%;justify-content:center">כניסה</button>
+    <div class="small" id="login-error" style="color:var(--bad);margin-top:8px"></div>
+  </form>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  var BOOT = __STRELINGO_BOOT__;
+  var API = BOOT.apiBase;
+  var $ = function (id) { return document.getElementById(id); };
+
+  // DOM built with textContent only: file and release names come from third
+  // parties and must never be read as HTML.
+  function el(tag, attrs) {
+    var n = document.createElement(tag);
+    var a = attrs || {};
+    Object.keys(a).forEach(function (k) {
+      var v = a[k];
+      if (v == null || v === false) return;
+      if (k === "class") n.className = v; else n.setAttribute(k, v);
+    });
+    for (var i = 2; i < arguments.length; i++) append(n, arguments[i]);
+    return n;
+  }
+  function append(n, c) {
+    if (c == null || c === false) return;
+    if (Array.isArray(c)) { c.forEach(function (x) { append(n, x); }); return; }
+    n.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
+  function toast(msg) {
+    var t = $("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.classList.remove("show"); }, 2200);
+  }
+
+  $("configure").href = BOOT.configureUrl;
+
+  function api(path, opts) {
+    return fetch(API + path, Object.assign({ credentials: "same-origin" }, opts || {})).then(function (r) {
+      if (r.status === 401) {
+        $("login-overlay").classList.add("show");
+        $("password").focus();
+        throw new Error("login");
+      }
+      if (!r.ok) throw new Error(String(r.status));
+      return r.json();
+    });
+  }
+  function post(path, body) {
+    return api(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  }
+
+  $("login-form").addEventListener("submit", function (e) {
+    e.preventDefault();
+    $("login-error").textContent = "";
+    fetch("/api/login", {
+      method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: $("password").value })
+    }).then(function (r) {
+      if (r.ok) { $("login-overlay").classList.remove("show"); refresh(); }
+      else $("login-error").textContent = "סיסמה שגויה";
+    });
+  });
+
+  // ── Words ───────────────────────────────────────────────────────
+  var HEB = BOOT.languages || {};
+  function lang(code) { return HEB[code] || code || ""; }
+  function pairOf(p) {
+    var x = String(p || "").split("+");
+    return { main: x[0], trans: x[1], label: lang(x[0]) + "+" + lang(x[1]) };
+  }
+  function entryName(entry, pair) {
+    var p = pairOf(pair);
+    return ({
+      star: "★ " + p.label, alt: "↻ " + p.label + " · חלופה",
+      main: lang(p.main) + " בלבד", trans: lang(p.trans) + " בלבד",
+      bad_sync: "⚠ הסנכרון לא טוב", bad_trans: "⚠ ה" + lang(p.trans) + " לא טובה", bad_main: "⚠ ה" + lang(p.main) + " לא טובה"
+    })[entry] || entry;
+  }
+  var VIA = {
+    play: ["tag ok", "🎓 נוגן דרך התוסף", "נבחר זרם 🎓 — התוסף יודע בדיוק איזה קובץ מתנגן"],
+    request: ["tag info", "הנגן מסר שם/גודל קובץ", "הנגן שלח את פרטי הקובץ עם הבקשה"],
+    upstream: ["tag ok", "נמצא ב-AIOStreams", "הקובץ שהנגן ציין נמצא ברשימת AIOStreams"],
+    "request+upstream": ["tag ok", "נמצא ב-AIOStreams", "הקובץ שהנגן ציין נמצא ברשימת AIOStreams"]
+  };
+  var TIER = {
+    file: ["ok", "✓ מסונכרן לקובץ שמתנגן", "לפי הכתוביות שמוטמעות בקובץ עצמו"],
+    hash: ["ok", "✓ מסונכרן לקובץ (טביעת אצבע)", "כתובית שהועלתה לקובץ הזה בדיוק"],
+    consensus: ["warn", "≈ לפי רוב הכתוביות", "התזמון שרוב הכתוביות מסכימות עליו — לא נבדק מול הקובץ שמתנגן"],
+    guess: ["warn", "? תזמון משוער", "אין מידע על הקובץ ואין הסכמה בין הכתוביות"],
+    none: ["bad", "✗ לא נבנתה כתובית", ""]
+  };
+  var ALIGNED = {
+    reference: "מסונכרן לעוגן", main: "מסונכרן לשורה השנייה", itself: "הוא העוגן",
+    unsynced: "בלי סנכרון — לא נמצאה התאמה"
+  };
+  var EMBEDDED = {
+    not_matroska: "הקובץ אינו MKV", no_cues: "לקובץ אין אינדקס", no_subtitle_tracks: "אין בקובץ כתוביות מוטמעות",
+    no_subtitle_cues: "האינדקס לא כולל את הכתוביות", too_few: "מעט מדי שורות בכתוביות המוטמעות",
+    picture_subtitles_only: "בקובץ יש רק כתוביות תמונה (PGS) — אין מהן תזמון שורות",
+    too_large: "האינדקס גדול מדי", timeout: "קריאת הקובץ לקחה יותר מדי זמן", range_not_supported: "השרת של הקובץ לא מאפשר קריאה חלקית",
+    private_address: "כתובת פרטית", bad_seek: "מבנה קובץ לא צפוי", truncated: "הקובץ נקטע", empty: "קובץ ריק", error: "שגיאה בקריאה"
+  };
+  var WHY = {
+    "a main-language subtitle fits it": "כתובית בשפת הסרט מתאימה לו",
+    "a translation subtitle fits it (no main-language one does)": "רק כתובית בשפת התרגום מתאימה לו",
+    "no subtitle fits it": "אף כתובית לא מתאימה לו",
+    "uploaded for this file (hash match)": "הועלתה לקובץ הזה (טביעת אצבע)",
+    "most subtitles share this timing": "רוב הכתוביות מסכימות על התזמון",
+    "best guess": "ניחוש",
+    "reported as bad sync": "דווח כסנכרון לא טוב"
+  };
+  function noteText(n, pair) {
+    var p = pairOf(pair);
+    if (n.indexOf("no_embedded_timings:") === 0) {
+      var r = n.slice(20);
+      return "אין תזמון מתוך הקובץ: " + (EMBEDDED[r] || (r.indexOf("http_") === 0 ? "השרת ענה " + r.slice(5) : r));
+    }
+    if (n.indexOf("reference_rejected:") === 0) {
+      var id = n.slice(19);
+      return "עוגן נפסל כי אף כתובית לא מתאימה לו: " + (id === "file" ? "הכתוביות שבקובץ" : id);
+    }
+    if (n.indexOf("crash") === 0) return "תקלה: " + n;
+    return ({
+      stream_not_found_in_stream_addon: "הקובץ שהנגן ציין לא נמצא ברשימת AIOStreams",
+      stream_addon_unreachable: "AIOStreams לא ענה",
+      file_probe_timeout: "קריאת הקובץ לקחה יותר מדי זמן",
+      no_main_language_subtitles: "לא נמצאו כתוביות ב" + lang(p.main),
+      main_language_downloads_failed: "הורדת הכתוביות ב" + lang(p.main) + " נכשלה",
+      no_reference_fits: "שום עוגן לא התאים לשום כתובית — התוצאה לא אמינה",
+      preferred_film_speed_over_pal: "הועדף תזמון במהירות קולנוע על פני 25fps (PAL)",
+      main_subtitle_low_confidence: "הכתובית ב" + lang(p.main) + " לא התאימה בביטחון",
+      translation_low_confidence: "הכתובית ב" + lang(p.trans) + " לא התאימה בביטחון",
+      lines_not_together: "שתי השורות לא מסונכרנות זו לזו",
+      translation_fitted_to_main_line: "ה" + lang(p.trans) + " סונכרנה לשורה של ה" + lang(p.main),
+      no_translation_subtitles: "לא נמצאו כתוביות ב" + lang(p.trans),
+      every_reference_was_reported: "כל העוגנים כבר דווחו — נבחר הטוב מביניהם",
+      every_main_subtitle_was_reported: "כל הכתוביות ב" + lang(p.main) + " דווחו",
+      every_translation_was_reported: "כל הכתוביות ב" + lang(p.trans) + " דווחו",
+      "alternative:other_timing": "חלופה: תזמון אחר",
+      "alternative:next_main": "חלופה: כתובית אחרת ב" + lang(p.main),
+      "alternative:next_translation": "חלופה: כתובית אחרת ב" + lang(p.trans),
+      format_failed: "יצירת הקובץ נכשלה"
+    })[n] || n;
+  }
+  var OUTCOME = {
+    recorded: ["tag ok", "✓ נרשם — הוגשה גרסה חלופית", ""],
+    too_soon: ["tag warn", "לא נרשם: מוקדם מדי", "פחות מ-15 שניות מאז שהכתובית הוגשה — כך נמנעים דיווחים מהורדה מוקדמת של הרשימה"],
+    duplicate: ["tag plain", "כבר נרשם", "אותו דיווח על אותה כתובית"],
+    nothing_served: ["tag warn", "לא נרשם: עוד לא הוגשה כתובית", ""],
+    nothing_to_retire: ["tag warn", "לא נרשם: אין מה להחליף", ""]
+  };
+
+  // ── Time and numbers ────────────────────────────────────────────
+  var rtf = new Intl.RelativeTimeFormat("he", { numeric: "auto" });
+  function ago(ms) {
+    var s = Math.round((ms - Date.now()) / 1000), a = Math.abs(s);
+    if (a < 60) return rtf.format(s, "second");
+    if (a < 3600) return rtf.format(Math.round(s / 60), "minute");
+    if (a < 86400) return rtf.format(Math.round(s / 3600), "hour");
+    return rtf.format(Math.round(s / 86400), "day");
+  }
+  function clock(ms) {
+    return new Date(ms).toLocaleString("he-IL", { day: "numeric", month: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  }
+  function sec(ms) { return (ms / 1000).toFixed(1); }
+  function pct(v) { return Math.round(Math.max(0, Math.min(1, v || 0)) * 100) + "%"; }
+  function gb(n) { return !n ? "" : n >= 1e9 ? (n / 1e9).toFixed(2) + " GB" : Math.max(1, Math.round(n / 1e6)) + " MB"; }
+  function ratioText(r) {
+    if (!r || Math.abs(r - 1) < 0.0004) return "";
+    if (Math.abs(r - 25 / 23.976) < 0.003) return "תוקנה מהירות 25→23.976 (PAL)";
+    if (Math.abs(r - 23.976 / 25) < 0.003) return "תוקנה מהירות 23.976→25 (PAL)";
+    if (Math.abs(r - 24 / 23.976) < 0.0006 || Math.abs(r - 23.976 / 24) < 0.0006) return "תוקנה מהירות 23.976↔24";
+    return "מהירות ×" + r.toFixed(4);
+  }
+  function offsetText(ms) {
+    if (!ms) return "";
+    return "הוזז " + (ms > 0 ? "+" : "−") + sec(Math.abs(ms)) + " ש׳";
+  }
+
+  // ── Build details ───────────────────────────────────────────────
+  function pickLine(label, p) {
+    if (!p) return null;
+    var bits = [p.source + " #" + (p.rank + 1)];
+    if (p.hashMatch) bits.push("טביעת אצבע");
+    var r = ratioText(p.ratio); if (r) bits.push(r);
+    var o = offsetText(p.offsetMs); if (o) bits.push(o);
+    if (p.splits) bits.push(p.splits + " חיתוכים תוקנו");
+    bits.push("התאמה " + pct(p.contrast));
+    return [el("span", {}, label), el("span", {},
+      el("span", { class: "tag " + (p.alignedTo === "unsynced" ? "bad" : p.confident ? "ok" : "warn") }, ALIGNED[p.alignedTo] || p.alignedTo),
+      " ", bits.join(" · "),
+      p.release ? [" · ", el("span", { class: "rel" }, p.release)] : null)];
+  }
+
+  function candTable(title, list) {
+    if (!list || !list.length) return null;
+    return el("div", { class: "scroll" }, el("table", { class: "cands" },
+      el("tr", {}, el("th", {}, title), el("th", {}, "התאמה"), el("th", {}, "כיסוי"), el("th", {}, "תיקון"), el("th", {}, "גרסה")),
+      list.map(function (c) {
+        return el("tr", {},
+          el("td", {}, (c.confident ? "✓ " : "✗ ") + c.source + " #" + (c.rank + 1) + (c.banned ? " (דווח)" : "")),
+          el("td", {}, pct(c.contrast)),
+          el("td", {}, pct(c.matched)),
+          el("td", {}, [ratioText(c.ratio), offsetText(c.offsetMs), c.splits ? c.splits + " חיתוכים" : ""].filter(Boolean).join(" · ") || "—"),
+          el("td", { class: "rel" }, c.release || ""));
+      })));
+  }
+
+  function buildDetails(info, pair) {
+    if (!info) return null;
+    var p = pairOf(pair);
+    var f = info.file || {};
+    var kv = el("div", { class: "kv" });
+    function row(k, v) { if (v != null && v !== "") { kv.append(el("span", {}, k)); kv.append(el("span", {}, v)); } }
+    row("קובץ", f.known ? [f.filename ? el("span", { class: "rel" }, f.filename) : "ידוע", f.size ? " · " + gb(f.size) : "", f.hash ? " · טביעת אצבע " + f.hash : ""] : "לא ידוע — הנגן לא מסר פרטים ולא נוגן זרם 🎓");
+    row("כתוביות בקובץ", f.embedded ? el("span", { class: "rel" }, f.embedded) : null);
+    row("עוגן תזמון", info.reference ? el("span", { class: "rel" }, info.reference) : null);
+    if (info.references && info.references.length) {
+      row("עוגנים שנבדקו", info.references.map(function (r) {
+        return el("div", {}, (r.accepted ? "✓ " : "✗ ") + (r.id === "file" ? "הכתוביות שבקובץ" : r.label) + " — " + (WHY[r.why] || r.why) + (r.banned ? " (דווח)" : ""));
+      }));
+    }
+    var m = pickLine(lang(p.main), info.main); if (m) { kv.append(m[0]); kv.append(m[1]); }
+    var t = pickLine(lang(p.trans), info.trans); if (t) { kv.append(t[0]); kv.append(t[1]); }
+    if (info.pair != null) row("השורות יחד", (info.pair >= 0.45 ? "✓ " : "✗ ") + pct(info.pair));
+    var c = info.candidates || {};
+    row("נמצאו", (c.main || 0) + " ב" + lang(p.main) + ", " + (c.trans || 0) + " ב" + lang(p.trans) + " · נבדקו " + (c.loadedMain || 0) + "+" + (c.loadedTrans || 0));
+    var tm = info.timings || {};
+    var parts = [];
+    if (tm.streamAddon != null) parts.push("AIOStreams " + sec(tm.streamAddon));
+    if (tm.probe != null) parts.push("קריאת קובץ " + sec(tm.probe));
+    if (tm.list != null) parts.push("חיפוש " + sec(tm.list));
+    if (tm.download != null) parts.push("הורדה " + sec(tm.download));
+    if (tm.align != null) parts.push("סנכרון " + sec(tm.align));
+    parts.push("סה״כ " + sec(info.ms || 0));
+    row("⏱ שניות", parts.join(" · "));
+    if (info.notes && info.notes.length) row("הערות", info.notes.map(function (n) { return el("div", {}, "• " + noteText(n, pair)); }));
+    var ev = info.evaluated || {};
+    return el("div", {}, kv, candTable(lang(p.main), ev.main), candTable(lang(p.trans), ev.trans));
+  }
+
+  function tierTag(info) {
+    var t = TIER[(info && info.tier) || "none"] || TIER.none;
+    return el("span", { class: "tag " + t[0], title: t[2] }, t[1]);
+  }
+
+  // ── Rows ────────────────────────────────────────────────────────
+  function eventRow(e) {
+    var line = el("div", { class: "line" });
+    var details = null;
+    if (e.kind === "serve") {
+      var isReport = /^bad_/.test(e.entry || "");
+      line.append(el("span", { class: "tag plain" }, "הוגש"),
+        el("b", {}, isReport ? "★ " + pairOf(e.pair).label + " — במקום, אחרי " + entryName(e.entry, e.pair) : entryName(e.entry, e.pair)));
+      if (!e.ok) line.append(el("span", { class: "tag bad", title: e.message || "" }, "✗ " + (e.message || "לא היה מוכן")));
+      else line.append(tierTag(e.info));
+      if (e.info && e.info.pair != null && e.ok && e.entry !== "main" && e.entry !== "trans")
+        line.append(el("span", { class: "tag " + (e.info.pair >= 0.45 ? "ok" : "bad") }, e.info.pair >= 0.45 ? "השורות יחד" : "השורות לא יחד"));
+      if (e.waitedMs != null) line.append(el("span", { class: "tag plain", title: "כמה זמן הנגן חיכה" },
+        e.waitedMs < 800 ? "⚡ מוכן מראש" : "המתנה " + sec(e.waitedMs) + " ש׳"));
+      if (e.info) details = buildDetails(e.info, e.pair);
+    } else if (e.kind === "build") {
+      line.append(el("span", { class: "tag plain" }, "נבנה"), el("b", {}, e.variant === 2 ? "↻ חלופה" : "★"), tierTag(e.info),
+        el("span", { class: "muted" }, sec((e.info && e.info.ms) || 0) + " ש׳"));
+      if (e.bans && (e.bans.refs.length || e.bans.subs.length)) line.append(el("span", { class: "tag warn", title: "מתחשב בדיווחים קודמים" }, "אחרי דיווח"));
+      details = buildDetails(e.info, e.pair);
+    } else if (e.kind === "report") {
+      var o = OUTCOME[(e.report || {}).outcome] || ["tag plain", (e.report || {}).outcome, ""];
+      line.append(el("span", { class: "tag warn" }, (e.report && e.report.from === "page") ? "דיווח מהדף" : "דיווח מהנגן"),
+        el("b", {}, entryName(e.entry, e.pair)), el("span", { class: o[0], title: o[2] }, o[1]));
+    } else if (e.kind === "undo") {
+      line.append(el("span", { class: "tag plain" }, "בוטל דיווח"), el("b", {}, entryName(e.entry, e.pair)));
+    } else if (e.kind === "play") {
+      line.append(el("span", { class: "tag ok" }, "🎓 נוגן"), e.file && e.file.filename ? el("span", { class: "rel" }, e.file.filename) : null,
+        e.file && e.file.size ? el("span", { class: "muted" }, gb(e.file.size)) : null);
+    } else if (e.kind === "list") {
+      var via = e.file && VIA[e.file.via];
+      line.append(el("span", { class: "tag plain" }, "הנגן ביקש רשימה"),
+        via ? el("span", { class: via[0], title: via[2] }, via[1]) : el("span", { class: "tag warn", title: "בלי פרטי קובץ אפשר רק לנחש את התזמון. נגנו זרם 🎓." }, "קובץ לא ידוע"));
+    }
+    line.append(el("span", { class: "when", title: clock(e.at) }, ago(e.at)));
+    var row = el("div", { class: "rowx" }, line);
+    if (details) row.append(el("details", {}, el("summary", {}, "פרטים"), details));
+    return row;
+  }
+
+  // Lists repeat often; keep the newest of each run.
+  function compact(events) {
+    var out = [];
+    events.forEach(function (e) {
+      var prev = out[out.length - 1];
+      if (prev && prev.kind === "list" && e.kind === "list") return;
+      out.push(e);
+    });
+    return out;
+  }
+
+  // ── Feedback ────────────────────────────────────────────────────
+  function feedback(card) {
+    if (!card.events.some(function (e) { return e.kind === "serve" && e.ok; })) return null;
+    var p = pairOf(card.pair);
+    var active = {};
+    (card.reports || []).forEach(function (r) { if (!r.undone) active[r.kind] = r; });
+    var kinds = [["bad_sync", "הסנכרון לא טוב"], ["bad_trans", "ה" + lang(p.trans) + " לא טובה"], ["bad_main", "ה" + lang(p.main) + " לא טובה"]];
+    var box = el("div", { class: "fb" }, el("span", { class: "small muted" }, "על מה שהוגש אחרון:"));
+    kinds.forEach(function (k) {
+      var r = active[k[0]];
+      if (r) {
+        var undo = el("button", { class: "undo", type: "button" }, "בטל");
+        undo.addEventListener("click", function () {
+          post("/api/feedback/undo", { user: card.user, videoId: card.videoId, id: r.id, pair: card.pair, type: card.type, kind: r.kind })
+            .then(function () { toast("הדיווח בוטל"); loadFeed(); })
+            .catch(function (e) { if (e.message !== "login") toast("הביטול נכשל"); });
+        });
+        box.append(el("span", { class: "done" }, "✓ דווח: " + k[1] + " ", undo));
+      } else {
+        var b = el("button", { type: "button" }, k[1]);
+        b.addEventListener("click", function () {
+          post("/api/feedback", { user: card.user, videoId: card.videoId, kind: k[0], pair: card.pair, type: card.type })
+            .then(function (res) {
+              toast(res.outcome === "recorded" ? "נרשם. בחרו שוב ★ בנגן לגרסה החדשה" : (OUTCOME[res.outcome] || [0, res.outcome])[1]);
+              loadFeed();
+            })
+            .catch(function (e) { if (e.message !== "login") toast("השליחה נכשלה"); });
+        });
+        box.append(b);
+      }
+    });
+    return box;
+  }
+
+  function verdict(card) {
+    var serve = card.events.filter(function (e) { return e.kind === "serve" && e.info; })[0];
+    var build = card.events.filter(function (e) { return e.kind === "build" && e.info; })[0];
+    var info = (serve && serve.info) || (build && build.info);
+    if (!info) return el("div", { class: "verdict muted" }, "עוד לא נבנתה כתובית");
+    var t = TIER[info.tier] || TIER.none;
+    var text = t[1] + (t[2] ? " — " + t[2] : "");
+    if (info.pair != null && info.pair < 0.45) return el("div", { class: "verdict bad" }, text + " · אבל שתי השורות לא מסונכרנות זו לזו");
+    return el("div", { class: "verdict " + t[0] }, text);
+  }
+
+  function card(c) {
+    var poster = c.poster
+      ? el("img", { class: "poster", src: c.poster, alt: "", loading: "lazy", referrerpolicy: "no-referrer" })
+      : el("div", { class: "poster empty" }, "🎬");
+    var parts = String(c.videoId).split(":");
+    var ep = parts.length >= 3 ? "S" + String(parts[1]).padStart(2, "0") + "E" + String(parts[2]).padStart(2, "0") : null;
+    var imdb = /^tt\d+$/.test(parts[0]) ? parts[0] : null;
+    var file = c.file && c.file.filename;
+    return el("div", { class: "entry" }, poster,
+      el("div", { style: "min-width:0" },
+        el("div", { class: "entry-head" },
+          imdb ? el("a", { class: "entry-title", href: "https://www.imdb.com/title/" + imdb + "/", target: "_blank", rel: "noopener" }, c.title || c.videoId)
+               : el("span", { class: "entry-title" }, c.title || c.videoId),
+          c.year ? el("span", { class: "muted small" }, c.year) : null,
+          ep ? el("span", { class: "ep" }, ep) : null,
+          c.episodeTitle ? el("span", { class: "muted small" }, c.episodeTitle) : null,
+          el("span", { class: "chip" }, pairOf(c.pair).label),
+          BOOT.scope === "all" ? el("span", { class: "chip", title: "המשתמש (לפי ההגדרה)" }, "👤 " + String(c.user).slice(0, 6)) : null,
+          el("span", { class: "when", title: clock(c.lastAt) }, ago(c.lastAt))),
+        file ? el("div", { class: "file", title: file }, file + (c.file.size ? "  ·  " + gb(c.file.size) : "")) : null,
+        verdict(c),
+        el("div", { class: "rows" }, compact(c.events).slice(0, 25).map(eventRow)),
+        feedback(c)));
+  }
+
+  function loadStatus() {
+    return api("/api/status").then(function (s) {
+      $("version").textContent = "v" + s.version;
+      var chips = [];
+      chips.push(s.sharedState === "memory"
+        ? el("span", { class: "chip " + (s.vercel ? "bad" : ""), title: "בלי Upstash/Turso כל מופע של השרת זוכר לבד — ב-Vercel זה שובר את 🎓 ואת היומן" }, (s.vercel ? "✗ " : "– ") + "זיכרון זמני")
+        : el("span", { class: "chip ok", title: "היומן, הבחירות והדיווחים משותפים לכל המופעים" }, "✓ זיכרון משותף (" + s.sharedState + ")"));
+      if (s.scope === "all") {
+        chips.push(s.protected
+          ? el("span", { class: "chip ok" }, "✓ מוגן בסיסמה")
+          : el("span", { class: "chip warn", title: "כל מי שיודע את הכתובת רואה את היומן. הגדירו ADMIN_PASSWORD ב-Vercel." }, "הדף פתוח לכולם"));
+      } else {
+        chips.push(el("span", { class: "chip" }, pairOf(s.pair).label));
+        chips.push(s.streamAddon
+          ? el("span", { class: "chip ok", title: "נגנו זרם שמסומן 🎓 והכתוביות יסונכרנו לקובץ עצמו" }, "✓ AIOStreams מחובר")
+          : el("span", { class: "chip warn", title: "בלי זה Nuvio בטלפון לא מוסר שום פרט על הקובץ, והתזמון משוער" }, "– AIOStreams לא מחובר"));
+      }
+      $("chips").replaceChildren.apply($("chips"), chips);
+    });
+  }
+
+  function loadFeed() {
+    return api("/api/activity").then(function (d) {
+      var list = d.videos || [];
+      $("feed").replaceChildren.apply($("feed"), list.length ? list.map(card)
+        : [el("div", { class: "empty-state" }, "עוד לא נצפה כלום. פתחו סרט ב-Nuvio או בסטרימיו והוא יופיע כאן.")]);
+    });
+  }
+
+  function refresh() {
+    return Promise.all([loadStatus(), loadFeed()]).catch(function (e) { if (e.message !== "login") console.warn(e); });
+  }
+
+  refresh();
+  setInterval(function () { if (!document.hidden) refresh(); }, 60000);
+  document.addEventListener("visibilitychange", function () { if (!document.hidden) refresh(); });
+})();
+</script>
+</body>
+</html>

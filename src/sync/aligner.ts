@@ -59,8 +59,11 @@ export const FPS_RATIOS: readonly number[] = [
 
 const GRID_MS = 10;
 const MAX_GLOBAL_OFFSET_MS = 300_000;
-const COARSE_STEP_MS = 250;
-const COARSE_MAX_CUES = 700;
+// The overlap peak is about a line wide (≥ 1 s), so a 500 ms grid over a
+// sample of lines finds it; the fine passes then pin it down.
+const COARSE_STEP_MS = 500;
+const COARSE_MAX_CUES = 400;
+const FINE_MAX_CUES = 600;
 const FINE_RATIO_STEPS = 6;
 const FINE_RATIO_DELTA = 0.0002;
 const FINE_OFFSET_RANGE_MS = 1500;
@@ -69,7 +72,10 @@ const FINAL_OFFSET_RANGE_MS = 60;
 const FINAL_OFFSET_STEP_MS = 10;
 
 const SPLIT_WINDOW_MS = 150_000;
-const SPLIT_STEP_MS = 100;
+const SPLIT_STEP_MS = 200;
+// Each segment's offset is then refined to this precision.
+const SEGMENT_REFINE_RANGE_MS = 200;
+const SEGMENT_REFINE_STEP_MS = 10;
 // Cost of changing the offset between two lines, in ms of overlap: well above
 // what a single line can gain (≈ its duration), so only a lasting change — a
 // cut — pays for itself. Far jumps cost a little more than near ones.
@@ -226,21 +232,24 @@ function globalFit(cov: Coverage, inc: Prepared, ratios: readonly number[], maxO
         }
     }
 
-    // Refine ratio and offset around the coarse peak, on every line.
+    // Refine ratio and offset around the coarse peak (on a sample), then the
+    // offset alone on every line.
+    const fineSample = sampleIndices(n, FINE_MAX_CUES);
     let ratio = best.ratio;
     let offset = best.offset;
-    let score = -1;
+    let fineScore = -1;
     for (let k = -FINE_RATIO_STEPS; k <= FINE_RATIO_STEPS; k++) {
         const r = best.ratio * (1 + k * FINE_RATIO_DELTA);
         for (let o = best.offset - FINE_OFFSET_RANGE_MS; o <= best.offset + FINE_OFFSET_RANGE_MS; o += FINE_OFFSET_STEP_MS) {
-            const s = scoreAt(cov, inc, r, o);
-            if (s > score) {
-                score = s;
+            const s = scoreAt(cov, inc, r, o, fineSample);
+            if (s > fineScore) {
+                fineScore = s;
                 ratio = r;
                 offset = o;
             }
         }
     }
+    let score = scoreAt(cov, inc, ratio, offset);
     const coarseOffset = offset;
     for (let o = coarseOffset - FINAL_OFFSET_RANGE_MS; o <= coarseOffset + FINAL_OFFSET_RANGE_MS; o += FINAL_OFFSET_STEP_MS) {
         const s = scoreAt(cov, inc, ratio, o);
@@ -333,6 +342,7 @@ function splitFit(cov: Coverage, inc: Prepared, ratio: number, baseOffset: numbe
     const offsets = new Float64Array(n);
     for (let i = 0; i < n; i++) offsets[i] = baseOffset + (ks[i] - half) * SPLIT_STEP_MS;
     cleanSegments(cov, inc, ratio, offsets);
+    refineSegments(cov, inc, ratio, offsets);
 
     let score = 0;
     let splits = 0;
@@ -366,6 +376,49 @@ function segmentScore(cov: Coverage, inc: Prepared, ratio: number, seg: Segment,
         total += cov.overlap(inc.starts[t] * ratio + offset, inc.ends[t] * ratio + offset);
     }
     return total;
+}
+
+// The DP works on a coarse grid; give each surviving segment its best offset.
+function refineSegments(cov: Coverage, inc: Prepared, ratio: number, offsets: Float64Array): void {
+    for (const seg of segmentsOf(offsets)) {
+        let best = seg.offset;
+        let bestScore = segmentScore(cov, inc, ratio, seg, seg.offset);
+        for (let o = seg.offset - SEGMENT_REFINE_RANGE_MS; o <= seg.offset + SEGMENT_REFINE_RANGE_MS; o += SEGMENT_REFINE_STEP_MS) {
+            const sc = segmentScore(cov, inc, ratio, seg, o);
+            if (sc > bestScore) {
+                bestScore = sc;
+                best = o;
+            }
+        }
+        for (let t = seg.from; t <= seg.to; t++) offsets[t] = best;
+    }
+}
+
+// One offset over a file with cuts can tilt the ratio a notch to half-fit
+// the cut; with the segments known, pick the ratio again around it (each
+// segment keeps its middle in place, then gets its own best offset).
+function refitRatio(cov: Coverage, inc: Prepared, ratio: number, offsets: Float64Array): { ratio: number; offsets: Float64Array; score: number } {
+    const total = (r: number, offs: Float64Array) => {
+        let sc = 0;
+        for (let i = 0; i < offs.length; i++) sc += cov.overlap(inc.starts[i] * r + offs[i], inc.ends[i] * r + offs[i]);
+        return sc;
+    };
+    let best = { ratio, offsets, score: total(ratio, offsets) };
+    const segs = segmentsOf(offsets);
+    for (let k = -FINE_RATIO_STEPS; k <= FINE_RATIO_STEPS; k++) {
+        if (k === 0) continue;
+        const r = ratio * (1 + k * FINE_RATIO_DELTA);
+        const offs = new Float64Array(offsets.length);
+        for (const seg of segs) {
+            const mid = (inc.starts[seg.from] + inc.ends[seg.to]) / 2;
+            const o = Math.round((seg.offset + mid * (ratio - r)) / SEGMENT_REFINE_STEP_MS) * SEGMENT_REFINE_STEP_MS;
+            for (let t = seg.from; t <= seg.to; t++) offs[t] = o;
+        }
+        refineSegments(cov, inc, r, offs);
+        const sc = total(r, offs);
+        if (sc > best.score) best = { ratio: r, offsets: offs, score: sc };
+    }
+    return best;
 }
 
 // Folds every run that does not clearly beat its neighbours' offsets into the
@@ -447,21 +500,24 @@ export function alignToReference(ref: Span[], incSpans: Span[], options: AlignOp
     let offsets: ArrayLike<number> = new Float64Array(n).fill(fit.offset);
     let score = fit.score;
     let splits = 0;
+    let ratio = fit.ratio;
 
     if (options.allowSplits !== false && n >= 2 * MIN_SEGMENT_LINES) {
         const split = splitFit(cov, inc, fit.ratio, fit.offset);
         const margin = Math.max(SPLIT_PENALTY_MS, 0.01 * inc.totalMs);
         if (split.splits > 0 && split.score > fit.score + margin) {
-            offsets = split.offsets;
-            score = split.score;
-            splits = split.splits;
+            const refit = refitRatio(cov, inc, fit.ratio, split.offsets);
+            ratio = refit.ratio;
+            offsets = refit.offsets;
+            score = refit.score;
+            splits = segmentsOf(refit.offsets).length - 1;
         }
     }
 
-    const matched = matchedShare(cov, inc, fit.ratio, offsets);
+    const matched = matchedShare(cov, inc, ratio, offsets);
     const spans = incSpans.map((span, i) => ({
-        start: Math.round(span.start * fit.ratio + offsets[i]),
-        end: Math.round(span.end * fit.ratio + offsets[i])
+        start: Math.round(span.start * ratio + offsets[i]),
+        end: Math.round(span.end * ratio + offsets[i])
     }));
 
     // How far the final alignment rises above chance. The single-offset peak
@@ -470,11 +526,11 @@ export function alignToReference(ref: Span[], incSpans: Span[], options: AlignOp
     // is itself well clear of chance, since splits can fit noise a little.
     const scoreShare = score / inc.totalMs;
     const finalContrast = fit.background < 1 ? (scoreShare - fit.background) / (1 - fit.background) : 0;
-    const contrast = fit.contrast >= MIN_GLOBAL_CONTRAST ? Math.max(fit.contrast, finalContrast) : fit.contrast;
+    const contrast = Math.min(1, fit.contrast >= MIN_GLOBAL_CONTRAST ? Math.max(fit.contrast, finalContrast) : fit.contrast);
 
     return {
         spans,
-        ratio: fit.ratio,
+        ratio,
         offsetMs: Math.round(fit.offset),
         splits,
         score: scoreShare,

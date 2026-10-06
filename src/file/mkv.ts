@@ -149,6 +149,14 @@ function isForced(t: MkvTrack): boolean {
     return t.forced || /forced/i.test(t.name);
 }
 
+// Picture subtitles (Blu-ray PGS, DVB) are usually stored as a "show" block
+// and a separate "clear" block with no duration: their cue times are not
+// lines. Text tracks always are, and so are picture tracks that carry
+// durations (VobSub as muxed by mkvmerge).
+function isTextCodec(t: MkvTrack): boolean {
+    return !t.codec || /^S_TEXT\/|^S_(ASS|SSA|KATE)$|^S_HDMV\/TEXTST$/i.test(t.codec);
+}
+
 function isSdh(t: MkvTrack): boolean {
     return /\bsdh\b|\bcc\b|hearing|malentendant/i.test(t.name);
 }
@@ -275,8 +283,10 @@ async function read(reader: RangeReader, head: Uint8Array, preferLangs: string[]
 
     const counted = tracks.map(t => ({ ...t, count: perTrack.get(t.number)?.length ?? 0 }));
     const prefer = preferLangs.map(l => l.toLowerCase()).filter(Boolean);
-    const usable = counted.filter(t => t.count >= MIN_LINES && !isForced(t));
+    const timed = (t: MkvTrack) => isTextCodec(t) || perTrack.get(t.number)!.every(([, d]) => Boolean(d));
+    const usable = counted.filter(t => t.count >= MIN_LINES && !isForced(t) && timed(t));
     if (usable.length === 0) {
+        if (counted.some(t => t.count >= MIN_LINES && !isForced(t))) throw new Fail('picture_subtitles_only');
         throw new Fail(counted.some(t => t.count > 0) ? 'too_few' : 'no_subtitle_cues');
     }
     const rank = (t: typeof counted[number]) => {

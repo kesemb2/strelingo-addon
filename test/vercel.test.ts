@@ -56,9 +56,27 @@ await check('🎓 play on instance A, subtitles on instance B: still synced to t
     assert.ok(srtAccuracy(srt, world.speech) > 0.95);
 
     forgetLocalJobs();
-    const status: any = await (await get(`/${cfg}/status`)).json();
-    assert.equal(status.builds[0].info.tier, 'file');
-    assert.equal(status.builds[0].info.file.via, 'play');
+    await new Promise(r => setTimeout(r, 50));
+    const activity: any = await (await get(`/${cfg}/api/activity`)).json();
+    const build = activity.videos[0].events.find((e: any) => e.kind === 'build' && e.variant === 1);
+    assert.equal(build.info.tier, 'file');
+    assert.equal(build.info.file.via, 'play');
+});
+
+await check('two instances asked for the same subtitle at once: one builds, the other waits for it', async () => {
+    const cfg2 = encodeConfig({ mainLang: 'French [fre]', transLang: 'English [eng]', n: 2 });
+    const list: any = await (await get(`/${cfg2}/subtitles/movie/${IMDB}/filename=x.mkv&videoSize=123.json`)).json();
+    const url = list.subtitles.find((s: any) => s.url.includes('/sub/main/')).url;
+    const before = osListings();
+    forgetLocalJobs();
+    const a = Promise.resolve(get(url)).then(r => r.text());
+    await new Promise(r => setTimeout(r, 5));
+    forgetLocalJobs(); // the second request lands on a fresh instance
+    const b = Promise.resolve(get(url)).then(r => r.text());
+    const [ta, tb] = await Promise.all([a, b]);
+    assert.equal(ta, tb);
+    assert.match(ta, /-->/);
+    assert.ok(osListings() - before <= 2, `OpenSubtitles searched ${osListings() - before} times (one build for ★, maybe one for ↻)`);
 });
 
 await check('a build finished on one instance is served by another without rebuilding', async () => {
@@ -71,7 +89,8 @@ await check('a build finished on one instance is served by another without rebui
 });
 
 await check('store traffic stays small (free tier: 500K commands/month)', async () => {
-    assert.ok(upstash.commands() < 60, `${upstash.commands()} commands for a whole viewing`);
+    assert.ok(upstash.commands() < 150, `${upstash.commands()} commands for these viewings`);
+    console.log(`  (store commands: ${upstash.commands()})`);
 });
 
 console.log(passed.join('\n'));

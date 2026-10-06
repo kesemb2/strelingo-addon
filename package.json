@@ -1,6 +1,6 @@
 {
   "name": "strelingo-smart",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Dual-language subtitles (the film's language + yours) synced to the file you actually play — Stremio & Nuvio add-on",
   "main": "src/index.ts",
   "type": "module",
@@ -8,8 +8,9 @@
     "start": "tsx src/index.ts",
     "dev": "tsx watch src/index.ts",
     "typecheck": "tsc --noEmit -p .",
-    "test": "tsx test/aligner.test.ts && tsx test/file.test.ts && tsx test/store.test.ts && tsx test/pipeline.test.ts && tsx test/server.test.ts && tsx test/vercel.test.ts",
-    "test:encoding": "tsx test/encoding.test.ts"
+    "test": "tsx test/aligner.test.ts && tsx test/file.test.ts && tsx test/store.test.ts && tsx test/pipeline.test.ts && tsx test/server.test.ts && tsx test/vercel.test.ts && tsx test/dashboard.test.ts",
+    "test:encoding": "tsx test/encoding.test.ts",
+    "embed": "node scripts/embed-dashboard.mjs"
   },
   "dependencies": {
     "@hono/node-server": "2.0.6",

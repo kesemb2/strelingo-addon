@@ -35,6 +35,26 @@ await check('MKV: picks the full dialogue track over forced and SDH ones', async
     assert.ok(res.bytesRead < 600_000, `read ${res.bytesRead} bytes of ${mkv.length}`);
 });
 
+await check('MKV: Blu-ray picture subtitles (show + clear blocks) are not taken for lines', async () => {
+    // A PGS track lists every "show" and every "clear" block as a cue, without durations.
+    const pgs: Array<[number, number | null]> = dialogue.flatMap(([t, d]) => [[t, null], [t + d!, null]] as Array<[number, null]>);
+    const mkv = buildMkv([
+        { number: 2, lang: 'fre', codec: 'S_HDMV/PGS', cues: pgs },
+        { number: 3, lang: 'eng', codec: 'S_TEXT/ASS', cues: dialogue }
+    ]);
+    const { fetch } = fakeFetch({ 'https://cdn.example/pgs.mkv': mkv });
+    const reader = new RangeReader('https://cdn.example/pgs.mkv', { fetchImpl: fetch });
+    const res = await readMkvSubtitleTimings(reader, await reader.read(0, 256 * 1024), ['fre']);
+    assert.ok(res.ok);
+    if (!res.ok) return;
+    assert.equal(res.track.number, 3, 'the text track, even in the other language');
+
+    const only = buildMkv([{ number: 2, lang: 'fre', codec: 'S_HDMV/PGS', cues: pgs }]);
+    const f2 = fakeFetch({ 'https://cdn.example/pgs2.mkv': only });
+    const r2 = new RangeReader('https://cdn.example/pgs2.mkv', { fetchImpl: f2.fetch });
+    assert.deepEqual(await readMkvSubtitleTimings(r2, await r2.read(0, 256 * 1024)), { ok: false, reason: 'picture_subtitles_only' });
+});
+
 await check('MKV: missing durations are filled up to the next line (capped)', async () => {
     const mkv = buildMkv([{ number: 2, lang: 'eng', cues: dialogue.map(([t]) => [t, null]) }]);
     const { fetch } = fakeFetch({ 'https://cdn.example/a.mkv': mkv });
